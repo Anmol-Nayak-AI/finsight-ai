@@ -1,0 +1,11 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+# Keep node_modules isolated in the container
+ENV PATH=/app/node_modules/.bin:$PATH
+
+CMD ["npm", "run", "dev"]
