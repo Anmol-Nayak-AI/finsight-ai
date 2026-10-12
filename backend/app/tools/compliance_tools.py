@@ -1,4 +1,5 @@
-from typing import Dict, Any
+import random
+from typing import Dict, Any, Optional
 from langchain_core.tools import tool
 import datetime
 from pydantic import BaseModel
@@ -9,7 +10,7 @@ from app.database import engine, sync_engine
 engine = sync_engine
 
 class TransactionCreatePayload(BaseModel):
-    transaction_id: str
+    transaction_id: Optional[str] = None
     customer_id: str = "CUST-DYNAMIC"
     customer_name: str
     amount: float
@@ -17,14 +18,15 @@ class TransactionCreatePayload(BaseModel):
     channel: str = "IMPS"
     beneficiary_name: str
     beneficiary_is_new: bool = True
-    narration: str
+    narration: str = "Corporate funds transfer"
     historical_avg: float = 50000.0
 
 def register_custom_transaction(data: TransactionCreatePayload) -> Dict[str, Any]:
     """Upserts dynamic simulation payload into partitioned PostgreSQL ledger."""
     now = datetime.datetime.now(datetime.timezone.utc)
+    txn_id = data.transaction_id or f"TXN-{random.randint(1000000, 9999999)}"
     record = {
-        "transaction_id": data.transaction_id,
+        "transaction_id": txn_id,
         "customer_id": data.customer_id,
         "customer_name": data.customer_name,
         "amount": float(data.amount),
