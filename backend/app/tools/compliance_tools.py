@@ -57,7 +57,7 @@ def register_custom_transaction(data: TransactionCreatePayload) -> Dict[str, Any
                 :channel, :beneficiary_id, :beneficiary_name, :beneficiary_is_new, 
                 :narration, :historical_avg, :created_at
             )
-            ON CONFLICT (transaction_id) DO UPDATE SET
+            ON CONFLICT (transaction_id, created_at) DO UPDATE SET
                 amount = EXCLUDED.amount,
                 channel = EXCLUDED.channel,
                 beneficiary_name = EXCLUDED.beneficiary_name,
