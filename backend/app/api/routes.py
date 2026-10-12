@@ -1,17 +1,22 @@
 import uuid
 import traceback
 from fastapi import APIRouter, HTTPException, Request, Depends, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from sqlalchemy import text
 from langgraph.types import Command
+from app.database import engine, sync_engine
 from app.tools.compliance_tools import TransactionCreatePayload, register_custom_transaction
-from app.auth import (
+from app.auth.security import (
     create_access_token, 
     verify_password, 
+    hash_password,
     get_current_user, 
     require_role, 
-    UserPrincipal, 
-    DEMO_OFFICERS
+    UserPrincipal
 )
+
+# Use synchronous engine for synchronous tool and database queries
+engine = sync_engine
 
 router = APIRouter(prefix="/api/v1", tags=["Enterprise Compliance API"])
 
@@ -23,8 +28,9 @@ class RegisterRequest(BaseModel):
     username: str
     password: str
     full_name: str
-    role: str = "MLRO_OFFICER"
-    department: str = "Special Investigations Unit (SIU)"
+    role: str = Field(default="MLRO_OFFICER", description="MLRO_OFFICER or ANALYST")
+    department: str = "Financial Crime Compliance (FCC)"
+    badge_id: str = ""
 
 class InvestigationRequest(BaseModel):
     transaction_id: str
@@ -33,55 +39,46 @@ class AdjudicationRequest(BaseModel):
     decision: str  # APPROVED | REJECTED | ESCALATED
     notes: str
 
+# 1. Register New Compliance Officer
 @router.post("/auth/register")
-async def register_officer(req: RegisterRequest):
-    from app.database import sync_engine
-    from app.auth.security import hash_password
-    from sqlalchemy import text
-    import random
-    
+async def register(req: RegisterRequest):
     username = req.username.strip().lower()
-    if not username:
-        raise HTTPException(status_code=400, detail="Username cannot be empty.")
+    if not username or len(req.password) < 4:
+        raise HTTPException(status_code=400, detail="Username required and password must be >= 4 characters.")
     
-    hashed = hash_password(req.password)
-    badge_prefix = "AML" if req.role != "SUPER_ADMIN" else "DIR"
-    badge_id = f"{badge_prefix}-{random.randint(10000, 99999)}"
+    badge = req.badge_id.strip() if req.badge_id.strip() else f"AML-{uuid.uuid4().hex[:5].upper()}"
+    role = req.role if req.role in ["MLRO_OFFICER", "ANALYST", "SUPER_ADMIN"] else "ANALYST"
     
-    try:
-        with sync_engine.begin() as conn:
-            existing = conn.execute(
-                text("SELECT username FROM compliance_officers WHERE username = :u;"),
-                {"u": username}
-            ).first()
-            if existing:
-                raise HTTPException(status_code=400, detail="Officer username already exists.")
-            
-            conn.execute(
-                text("""
-                INSERT INTO compliance_officers (username, hashed_password, full_name, role, badge_id, department, is_active)
-                VALUES (:u, :pwd, :name, :role, :badge, :dept, TRUE);
-                """),
-                {
-                    "u": username,
-                    "pwd": hashed,
-                    "name": req.full_name.strip() or username,
-                    "role": req.role,
-                    "badge": badge_id,
-                    "dept": req.department.strip() or "Financial Crime Compliance"
-                }
-            )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
-    
+    with engine.begin() as conn:
+        existing = conn.execute(
+            text("SELECT username FROM compliance_officers WHERE username = :u;"),
+            {"u": username}
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail=f"Officer ID '{username}' already registered. Please sign in.")
+        
+        hashed = hash_password(req.password)
+        conn.execute(
+            text("""
+                INSERT INTO compliance_officers (username, hashed_password, full_name, role, badge_id, department)
+                VALUES (:u, :pwd, :name, :role, :badge, :dept);
+            """),
+            {
+                "u": username,
+                "pwd": hashed,
+                "name": req.full_name.strip() or username.title(),
+                "role": role,
+                "badge": badge,
+                "dept": req.department.strip() or "Special Investigations Unit (SIU)"
+            }
+        )
+
     principal = UserPrincipal(
         username=username,
-        full_name=req.full_name.strip() or username,
-        role=req.role,
-        badge_id=badge_id,
-        department=req.department.strip() or "Financial Crime Compliance"
+        full_name=req.full_name.strip() or username.title(),
+        role=role,
+        badge_id=badge,
+        department=req.department.strip() or "Special Investigations Unit (SIU)"
     )
     token = create_access_token(principal)
     return {
@@ -90,42 +87,28 @@ async def register_officer(req: RegisterRequest):
         "user": principal.dict()
     }
 
+# 2. Login Existing Officer
 @router.post("/auth/login")
 async def login(req: LoginRequest):
-    from app.database import sync_engine
-    from sqlalchemy import text
-
     username = req.username.strip().lower()
-    user_record = None
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT username, hashed_password, full_name, role, badge_id, department FROM compliance_officers WHERE username = :u;"),
+            {"u": username}
+        ).mappings().first()
 
-    # 1. Query PostgreSQL compliance_officers table
-    try:
-        with sync_engine.connect() as conn:
-            row = conn.execute(
-                text("SELECT * FROM compliance_officers WHERE LOWER(username) = :u AND is_active = TRUE;"),
-                {"u": username}
-            ).mappings().first()
-            if row:
-                user_record = dict(row)
-    except Exception as e:
-        print(f"[Auth DB Warning] {e}")
-
-    # 2. Fallback to in-memory DEMO_OFFICERS
-    if not user_record:
-        user_record = DEMO_OFFICERS.get(req.username.strip())
-
-    if not user_record or not verify_password(req.password, user_record["hashed_password"]):
+    if not row or not verify_password(req.password, row["hashed_password"]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Compliance Officer credentials."
+            detail="Authentication failed. Invalid username or security credentials."
         )
-    
+
     principal = UserPrincipal(
-        username=user_record["username"],
-        full_name=user_record["full_name"],
-        role=user_record["role"],
-        badge_id=user_record["badge_id"],
-        department=user_record["department"]
+        username=row["username"],
+        full_name=row["full_name"],
+        role=row["role"],
+        badge_id=row["badge_id"],
+        department=row["department"]
     )
     token = create_access_token(principal)
     return {
@@ -134,6 +117,18 @@ async def login(req: LoginRequest):
         "user": principal.dict()
     }
 
+# 3. Directory of Compliance Personnel (RBAC Governance)
+@router.get("/auth/users")
+async def list_compliance_officers(current_user: UserPrincipal = Depends(get_current_user)):
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("""
+                SELECT username, full_name, role, badge_id, department, created_at 
+                FROM compliance_officers 
+                ORDER BY created_at DESC;
+            """)
+        ).mappings().all()
+    return [dict(r) for r in rows]
 
 @router.get("/auth/me")
 async def get_my_profile(current_user: UserPrincipal = Depends(get_current_user)):
@@ -234,7 +229,6 @@ async def resume_investigation(
     case_id: str, 
     payload: AdjudicationRequest, 
     request: Request,
-    # Regulatory compliance mandates MLRO / Special Unit authority to officially sign off
     current_user: UserPrincipal = Depends(require_role(["MLRO_OFFICER"]))
 ):
     try:
