@@ -12,7 +12,10 @@ from app.auth.security import (
     hash_password,
     get_current_user, 
     require_role, 
-    UserPrincipal
+    UserPrincipal,
+    INSTITUTIONAL_KEYS,
+    revoke_token,
+    log_security_event
 )
 
 # Use synchronous engine for synchronous tool and database queries
@@ -31,6 +34,7 @@ class RegisterRequest(BaseModel):
     role: str = Field(default="MLRO_OFFICER", description="MLRO_OFFICER or ANALYST")
     department: str = "Financial Crime Compliance (FCC)"
     badge_id: str = ""
+    organization_key: str = ""
 
 class InvestigationRequest(BaseModel):
     transaction_id: str
@@ -49,6 +53,15 @@ async def register(req: RegisterRequest):
     badge = req.badge_id.strip() if req.badge_id.strip() else f"AML-{uuid.uuid4().hex[:5].upper()}"
     role = req.role if req.role in ["MLRO_OFFICER", "ANALYST", "SUPER_ADMIN"] else "ANALYST"
     
+    # Verify Institutional Organization Passkey
+    expected_key = INSTITUTIONAL_KEYS.get(role)
+    if expected_key and req.organization_key != expected_key:
+        log_security_event("REGISTRATION_REJECTED", username=username, details=f"Invalid authorization key for role {role}")
+        raise HTTPException(
+            status_code=403, 
+            detail=f"Invalid organization authorization key for role '{role}'."
+        )
+
     with engine.begin() as conn:
         existing = conn.execute(
             text("SELECT username FROM compliance_officers WHERE username = :u;"),
@@ -80,6 +93,7 @@ async def register(req: RegisterRequest):
         badge_id=badge,
         department=req.department.strip() or "Special Investigations Unit (SIU)"
     )
+    log_security_event("OFFICER_PROVISIONED", username=username, badge_id=badge, details=f"Provisioned with role {role}")
     token = create_access_token(principal)
     return {
         "access_token": token,
@@ -98,6 +112,7 @@ async def login(req: LoginRequest):
         ).mappings().first()
 
     if not row or not verify_password(req.password, row["hashed_password"]):
+        log_security_event("LOGIN_FAILED", username=username, details="Invalid security credentials")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication failed. Invalid username or security credentials."
@@ -110,6 +125,7 @@ async def login(req: LoginRequest):
         badge_id=row["badge_id"],
         department=row["department"]
     )
+    log_security_event("SESSION_AUTHENTICATED", username=principal.username, badge_id=principal.badge_id, details=f"Authenticated as {principal.role}")
     token = create_access_token(principal)
     return {
         "access_token": token,
@@ -117,7 +133,16 @@ async def login(req: LoginRequest):
         "user": principal.dict()
     }
 
-# 3. Directory of Compliance Personnel (RBAC Governance)
+# 3. Server-Side Token Revocation & Logout
+@router.post("/auth/logout")
+async def logout(request: Request, current_user: UserPrincipal = Depends(get_current_user)):
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+        revoke_token(token)
+    return {"status": "success", "message": "Officer session revoked server-side."}
+
+# 4. Directory of Compliance Personnel (RBAC Governance)
 @router.get("/auth/users")
 async def list_compliance_officers(current_user: UserPrincipal = Depends(get_current_user)):
     with engine.connect() as conn:
@@ -126,6 +151,20 @@ async def list_compliance_officers(current_user: UserPrincipal = Depends(get_cur
                 SELECT username, full_name, role, badge_id, department, created_at 
                 FROM compliance_officers 
                 ORDER BY created_at DESC;
+            """)
+        ).mappings().all()
+    return [dict(r) for r in rows]
+
+# 5. Security & Access Audit Trail Logs
+@router.get("/auth/audit-logs")
+async def list_security_audit_logs(current_user: UserPrincipal = Depends(get_current_user)):
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("""
+                SELECT id, event_type, username, badge_id, details, created_at 
+                FROM security_audit_logs 
+                ORDER BY created_at DESC 
+                LIMIT 100;
             """)
         ).mappings().all()
     return [dict(r) for r in rows]
