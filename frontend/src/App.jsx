@@ -24,44 +24,43 @@ import {
   Lock, 
   LogOut, 
   BadgeCheck, 
-  UserPlus, 
   LogIn, 
   Users, 
   KeyRound, 
   ShieldCheck, 
   X, 
-  History, 
-  FileSpreadsheet
+  History,
+  Eye,
+  EyeOff,
+  Smartphone,
+  ArrowRight,
+  GitMerge,
+  UserCog
 } from 'lucide-react';
 
 export default function App() {
-  const [authToken, setAuthToken] = useState(localStorage.getItem('finsight_token') || '');
   const [currentUser, setCurrentUser] = useState(JSON.parse(localStorage.getItem('finsight_user') || 'null'));
   
-  // Auth Mode: 'LOGIN' or 'REGISTER'
-  const [authMode, setAuthMode] = useState('LOGIN');
-  const [loginUsername, setLoginUsername] = useState('officer.sharma');
-  const [loginPassword, setLoginPassword] = useState('Compliance@2026');
-
-  // Register Fields
-  const [regFullName, setRegFullName] = useState('');
-  const [regUsername, setRegUsername] = useState('');
-  const [regPassword, setRegPassword] = useState('');
-  const [regRole, setRegRole] = useState('MLRO_OFFICER');
-  const [regDepartment, setRegDepartment] = useState('Special Investigations Unit');
-  const [orgKey, setOrgKey] = useState('MLRO-AUTH-2026');
-
+  // 2-Step Login States
+  const [loginStep, setLoginStep] = useState(1); // 1 = Password, 2 = 6-Digit TOTP
+  const [username, setUsername] = useState('analyst.verma');
+  const [password, setPassword] = useState('Analyst@2026');
+  const [showPassword, setShowPassword] = useState(false);
+  const [mfaChallengeToken, setMfaChallengeToken] = useState('');
+  const [totpCode, setTotpCode] = useState('');
+  const [pendingOfficerInfo, setPendingOfficerInfo] = useState(null);
+  
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
-  // Governance Modal (Directory + Security Audit Logs)
+  // Governance Modal
   const [govModalOpen, setGovModalOpen] = useState(false);
-  const [govTab, setGovTab] = useState('directory'); // 'directory' | 'logs'
+  const [govTab, setGovTab] = useState('directory');
   const [officerList, setOfficerList] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [loadingGov, setLoadingGov] = useState(false);
 
-  // App Workspace State
+  // Investigation Workspace State
   const [formData, setFormData] = useState({
     transaction_id: 'TXN-1002491',
     customer_name: 'Aarav Malhotra',
@@ -76,77 +75,59 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [caseData, setCaseData] = useState(null);
   const [activeTab, setActiveTab] = useState('findings');
-  const [humanModalOpen, setHumanModalOpen] = useState(false);
-  const [decisionNotes, setDecisionNotes] = useState('');
-  const [resumeAction, setResumeAction] = useState('REJECTED');
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Handle Login
-  const handleLogin = async (overrideUser, overridePass) => {
-    setAuthLoading(true);
-    setAuthError('');
-    const u = overrideUser !== undefined ? overrideUser : loginUsername;
-    const p = overridePass !== undefined ? overridePass : loginPassword;
+  // Maker-Checker Adjudication Modal States
+  const [adjudicationModalOpen, setAdjudicationModalOpen] = useState(false);
+  const [makerRecDecision, setMakerRecDecision] = useState('RECOMMEND_REJECT');
+  const [makerNotes, setMakerNotes] = useState('');
+  const [checkerFinalDecision, setCheckerFinalDecision] = useState('CONFIRMED_REJECTED');
+  const [checkerNotes, setCheckerNotes] = useState('');
 
-    try {
-      const res = await fetch('/api/v1/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: u, password: p }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'Authentication failed. Please verify credentials.');
-      }
-
-      const data = await res.json();
-      setAuthToken(data.access_token);
-      setCurrentUser(data.user);
-      localStorage.setItem('finsight_token', data.access_token);
-      localStorage.setItem('finsight_user', JSON.stringify(data.user));
-    } catch (err) {
-      setAuthError(err.message);
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  // Handle Register
-  const handleRegister = async (e) => {
+  // 1. Step-1 Login: Password Verification
+  const handleStep1Submit = async (e) => {
     if (e) e.preventDefault();
     setAuthLoading(true);
     setAuthError('');
-
-    if (!regUsername || !regPassword) {
-      setAuthError('Officer handle and password are required.');
-      setAuthLoading(false);
-      return;
-    }
-
     try {
-      const res = await fetch('/api/v1/auth/register', {
+      const res = await fetch('/api/v1/auth/login-step1', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: regUsername,
-          password: regPassword,
-          full_name: regFullName || regUsername,
-          role: regRole,
-          department: regDepartment,
-          organization_key: orgKey
-        }),
+        body: JSON.stringify({ username, password })
       });
-
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'Officer registration rejected.');
+        throw new Error(err.detail || 'Authentication failed. Check credentials.');
       }
-
       const data = await res.json();
-      setAuthToken(data.access_token);
+      setMfaChallengeToken(data.mfa_challenge_token);
+      setPendingOfficerInfo(data);
+      setLoginStep(2); // Advance to 2FA TOTP code screen
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // 2. Step-2 Login: 6-Digit MFA Verification
+  const handleStep2Submit = async (e) => {
+    if (e) e.preventDefault();
+    setAuthLoading(true);
+    setAuthError('');
+    try {
+      const res = await fetch('/api/v1/auth/verify-mfa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // Stores HttpOnly session cookie
+        body: JSON.stringify({ mfa_challenge_token: mfaChallengeToken, totp_code: totpCode })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'MFA validation failed.');
+      }
+      const data = await res.json();
       setCurrentUser(data.user);
-      localStorage.setItem('finsight_token', data.access_token);
       localStorage.setItem('finsight_user', JSON.stringify(data.user));
     } catch (err) {
       setAuthError(err.message);
@@ -155,33 +136,23 @@ export default function App() {
     }
   };
 
-  // Stateful Server-Side Logout & Revocation
   const handleLogout = async () => {
     try {
-      if (authToken) {
-        await fetch('/api/v1/auth/logout', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${authToken}` }
-        });
-      }
-    } catch (err) {
-      console.warn("Server revocation ping:", err);
-    } finally {
-      setAuthToken('');
-      setCurrentUser(null);
-      localStorage.removeItem('finsight_token');
-      localStorage.removeItem('finsight_user');
-      setCaseData(null);
-    }
+      await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch (_) {}
+    setCurrentUser(null);
+    localStorage.removeItem('finsight_user');
+    setCaseData(null);
+    setLoginStep(1);
+    setTotpCode('');
   };
 
-  // Load Governance Data
   const loadGovernanceData = async () => {
     setLoadingGov(true);
     try {
       const [uRes, aRes] = await Promise.all([
-        fetch('/api/v1/auth/users', { headers: { 'Authorization': `Bearer ${authToken}` } }),
-        fetch('/api/v1/auth/audit-logs', { headers: { 'Authorization': `Bearer ${authToken}` } })
+        fetch('/api/v1/auth/users', { credentials: 'include' }),
+        fetch('/api/v1/auth/audit-logs', { credentials: 'include' })
       ]);
       if (uRes.ok) setOfficerList(await uRes.json());
       if (aRes.ok) setAuditLogs(await aRes.json());
@@ -193,9 +164,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (govModalOpen && authToken) {
-      loadGovernanceData();
-    }
+    if (govModalOpen && currentUser) loadGovernanceData();
   }, [govModalOpen]);
 
   const generateRandomSimulation = () => {
@@ -229,7 +198,6 @@ export default function App() {
   const handleSimulate = async () => {
     setLoading(true);
     setErrorMessage('');
-
     const payload = {
       transaction_id: String(formData.transaction_id || `TXN-${Date.now()}`),
       customer_id: 'CUST-44021',
@@ -246,16 +214,14 @@ export default function App() {
     try {
       const res = await fetch('/api/v1/investigations/simulate', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(payload),
       });
 
       if (res.status === 401) {
         handleLogout();
-        throw new Error("Session expired or revoked. Please log in again.");
+        throw new Error("Session expired. Please sign in again.");
       }
 
       if (!res.ok) {
@@ -272,33 +238,56 @@ export default function App() {
     }
   };
 
-  const handleResumeHITL = async () => {
+  // Maker: Submit Recommendation
+  const handleMakerSubmit = async () => {
     if (!caseData?.case_id) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/v1/investigations/${caseData.case_id}/resume`, {
+      const res = await fetch(`/api/v1/investigations/${caseData.case_id}/maker-recommend`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`
-        },
-        body: JSON.stringify({ decision: resumeAction, notes: decisionNotes }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ recommendation: makerRecDecision, findings_summary: makerNotes }),
       });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || `Adjudication rejected: HTTP ${res.status}`);
-      }
-
+      if (!res.ok) throw new Error("Maker recommendation submission failed.");
       const updated = await res.json();
       setCaseData(prev => ({
         ...prev,
-        status: updated.review_status,
-        final_verdict: updated.final_verdict,
-        execution_trace: updated.execution_trace,
-        requires_human_review: false
+        status: updated.status,
+        requires_maker_review: false,
+        requires_checker_review: true,
+        maker_status: updated.maker_recommendation
       }));
-      setHumanModalOpen(false);
+      setAdjudicationModalOpen(false);
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Checker: Execute Final Decision
+  const handleCheckerSubmit = async () => {
+    if (!caseData?.case_id) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/v1/investigations/${caseData.case_id}/checker-execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ final_decision: checkerFinalDecision, statutory_memo: checkerNotes }),
+      });
+      if (!res.ok) throw new Error("Checker execution failed.");
+      const updated = await res.json();
+      setCaseData(prev => ({
+        ...prev,
+        status: updated.status,
+        final_verdict: updated.final_verdict,
+        requires_maker_review: false,
+        requires_checker_review: false,
+        checker_status: updated.checker_signoff
+      }));
+      setAdjudicationModalOpen(false);
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -320,18 +309,17 @@ export default function App() {
 
   const velocityRatio = (parseFloat(formData.amount || 0) / (parseFloat(formData.historical_avg || 1) || 1)).toFixed(1);
   const riskPercent = caseData ? Math.round((caseData.risk_score || 0) * 100) : null;
-  const isManuallyAdjudicated = caseData?.final_verdict?.startsWith('MANUAL_');
 
   // =========================================================================
-  // 1. EXECUTIVE AUTHENTICATION PORTAL (USER-FRIENDLY & HIGH-SECURITY)
+  // 1. INSTITUTIONAL LOGIN PORTAL (ZERO REGISTRATION, MFA TOTP ENFORCED)
   // =========================================================================
-  if (!authToken || !currentUser) {
+  if (!currentUser) {
     return (
       <div className="min-h-screen bg-[#05070e] text-slate-100 flex items-center justify-center p-4 md:p-8 font-sans antialiased selection:bg-indigo-500/30">
         <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-12 bg-[#090d18] border border-slate-800/90 rounded-3xl shadow-2xl overflow-hidden min-h-[580px]">
           
-          {/* Left Panel: Institutional Brand & Compliance Assurance (No Dev Jargon) */}
-          <div className="md:col-span-5 bg-gradient-to-br from-[#0c1326] via-[#090e1c] to-[#060912] p-8 flex flex-col justify-between border-b md:border-b-0 md:border-r border-slate-800/80 relative">
+          {/* Left Panel: Enterprise Governance & Institutional Assurance */}
+          <div className="md:col-span-5 bg-gradient-to-br from-[#0c1326] via-[#090e1c] to-[#060912] p-8 flex flex-col justify-between border-b md:border-b-0 md:border-r border-slate-800/80">
             <div className="space-y-6">
               <div className="flex items-center gap-3">
                 <div className="h-11 w-11 rounded-2xl bg-gradient-to-tr from-indigo-600 to-cyan-400 p-[1.5px] shadow-lg shadow-indigo-500/20">
@@ -342,41 +330,40 @@ export default function App() {
                 <div>
                   <h1 className="text-base font-bold tracking-wider text-white uppercase font-mono">FINSIGHT AI</h1>
                   <span className="text-[10px] font-sans px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 font-medium">
-                    Financial Crime Compliance
+                    Restricted Banking Terminal
                   </span>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <h2 className="text-lg font-bold text-white tracking-tight">Institutional Compliance Terminal</h2>
+                <h2 className="text-lg font-bold text-white tracking-tight">Financial Crime Compliance Network</h2>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Authorized gateway for Anti-Money Laundering transaction monitoring, suspicious activity investigations, and statutory adjudication.
+                  Dual-controlled transaction monitoring and AML decisioning platform. Public registration is prohibited by security policy.
                 </p>
               </div>
 
-              {/* User-Friendly Institutional Highlights */}
               <div className="space-y-3 pt-2 text-xs">
                 <div className="flex items-start gap-2.5 text-slate-300">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <GitMerge className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
                   <div>
-                    <div className="font-semibold text-white">Dual-Control Governance</div>
-                    <div className="text-[11px] text-slate-400">Strict separation of duties between investigative analysts and reporting officers.</div>
+                    <div className="font-semibold text-white">Maker-Checker Dual Control</div>
+                    <div className="text-[11px] text-slate-400">Analyst investigates and recommends; MLRO Officer verifies and executes.</div>
                   </div>
                 </div>
 
                 <div className="flex items-start gap-2.5 text-slate-300">
-                  <Scale className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                  <Smartphone className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                   <div>
-                    <div className="font-semibold text-white">Statutory Regulatory Mandates</div>
-                    <div className="text-[11px] text-slate-400">Compliant with Central Bank KYC Master Directions & FIU requirements.</div>
+                    <div className="font-semibold text-white">Mandatory Two-Factor Auth (MFA)</div>
+                    <div className="text-[11px] text-slate-400">Hardware token or authenticator code required on every sign-in.</div>
                   </div>
                 </div>
 
                 <div className="flex items-start gap-2.5 text-slate-300">
                   <Lock className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
                   <div>
-                    <div className="font-semibold text-white">Stateful Session Security</div>
-                    <div className="text-[11px] text-slate-400">Session revocation and tamper-evident activity auditing on every operation.</div>
+                    <div className="font-semibold text-white">Encrypted HttpOnly Sessions</div>
+                    <div className="text-[11px] text-slate-400">Zero browser-readable tokens; protected against cross-site script theft.</div>
                   </div>
                 </div>
               </div>
@@ -384,213 +371,59 @@ export default function App() {
 
             <div className="pt-6 border-t border-slate-800/80 text-[11px] text-slate-500 font-medium flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Secure Regulated Environment Active</span>
+              <span>Zero-Trust Enterprise Access Control</span>
             </div>
           </div>
 
-          {/* Right Panel: Clean Sign-In & Governed Provisioning */}
+          {/* Right Panel: Two-Step Login */}
           <div className="md:col-span-7 p-8 flex flex-col justify-between bg-[#080c16]">
             <div>
-              {/* Tab Switcher */}
               <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800/80">
-                <div className="flex gap-2 p-1 bg-[#05070e] rounded-xl border border-slate-800 text-xs font-semibold">
-                  <button
-                    type="button"
-                    onClick={() => { setAuthMode('LOGIN'); setAuthError(''); }}
-                    className={`px-4 py-2 rounded-lg flex items-center gap-2 transition cursor-pointer ${
-                      authMode === 'LOGIN' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <LogIn className="w-3.5 h-3.5" />
-                    <span>Officer Sign In</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setAuthMode('REGISTER'); setAuthError(''); }}
-                    className={`px-4 py-2 rounded-lg flex items-center gap-2 transition cursor-pointer ${
-                      authMode === 'REGISTER' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <UserPlus className="w-3.5 h-3.5" />
-                    <span>Provision Officer</span>
-                  </button>
+                <div className="flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-indigo-400" />
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
+                    {loginStep === 1 ? "1. Officer Authentication" : "2. Two-Factor Verification"}
+                  </h3>
                 </div>
+                <span className="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 rounded">
+                  STEP {loginStep} OF 2
+                </span>
               </div>
 
-              {/* 1. SIGN IN FORM */}
-              {authMode === 'LOGIN' ? (
-                <div className="space-y-4">
+              {loginStep === 1 ? (
+                /* STEP 1: PASSWORD FORM */
+                <form onSubmit={handleStep1Submit} className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs text-slate-300 font-medium">Compliance Officer Handle</label>
+                    <label className="text-xs text-slate-300 font-medium">Compliance Officer Username</label>
                     <input
                       type="text"
-                      value={loginUsername}
-                      onChange={(e) => setLoginUsername(e.target.value)}
-                      placeholder="e.g. officer.sharma"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder="e.g. analyst.verma"
                       className="w-full bg-[#05070e] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs text-slate-300 font-medium">Security Password</label>
-                    <input
-                      type="password"
-                      value={loginPassword}
-                      onChange={(e) => setLoginPassword(e.target.value)}
-                      placeholder="Enter security password"
-                      className="w-full bg-[#05070e] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono"
-                    />
-                  </div>
-
-                  {authError && (
-                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 shrink-0" />
-                      <span>{authError}</span>
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => handleLogin()}
-                    disabled={authLoading}
-                    className="w-full bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-semibold py-3 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/25 mt-2"
-                  >
-                    {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-                    <span>Sign In to Terminal</span>
-                  </button>
-
-                  {/* Quick-Fill Demonstration Profiles */}
-                  <div className="pt-4 mt-2 border-t border-slate-800/80 space-y-2">
-                    <span className="text-[11px] text-slate-400 font-medium">Approved Pre-Seeded Officer Credentials:</span>
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <button
-                        type="button"
-                        onClick={() => handleLogin('officer.sharma', 'Compliance@2026')}
-                        className="p-3 rounded-xl bg-[#05070e] border border-slate-800 hover:border-cyan-500/50 text-left transition cursor-pointer group"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-white group-hover:text-cyan-400">Priya Sharma</span>
-                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-bold">MLRO</span>
-                        </div>
-                        <div className="text-[10px] text-slate-400 mt-1">Full Adjudication & Freeze Authority</div>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleLogin('analyst.verma', 'Analyst@2026')}
-                        className="p-3 rounded-xl bg-[#05070e] border border-slate-800 hover:border-indigo-500/50 text-left transition cursor-pointer group"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-white group-hover:text-indigo-400">Rohan Verma</span>
-                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 font-bold">ANALYST</span>
-                        </div>
-                        <div className="text-[10px] text-slate-400 mt-1">Transaction Monitoring Scope</div>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                /* 2. REGISTRATION WITH PASSCODE ENFORCEMENT & CUSTOM DARK ROLE TILES */
-                <form onSubmit={handleRegister} className="space-y-3.5">
-                  <div className="space-y-1">
-                    <label className="text-xs text-slate-300 font-medium">Full Legal Name</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Aarav Malhotra"
-                      value={regFullName}
-                      onChange={(e) => setRegFullName(e.target.value)}
-                      className="w-full bg-[#05070e] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition"
                       required
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-xs text-slate-300 font-medium">Officer Handle</label>
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-slate-300 font-medium">Password</label>
+                    <div className="relative">
                       <input
-                        type="text"
-                        placeholder="e.g. officer.aarav"
-                        value={regUsername}
-                        onChange={(e) => setRegUsername(e.target.value)}
-                        className="w-full bg-[#05070e] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono"
+                        type={showPassword ? "text" : "password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Enter password"
+                        className="w-full bg-[#05070e] border border-slate-800 rounded-xl px-4 py-2.5 pr-10 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono"
                         required
                       />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs text-slate-300 font-medium">Security Password</label>
-                      <input
-                        type="password"
-                        placeholder="Min 4 characters"
-                        value={regPassword}
-                        onChange={(e) => setRegPassword(e.target.value)}
-                        className="w-full bg-[#05070e] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  {/* Dark Role Tiles (No White OS Dropdown) */}
-                  <div className="space-y-1.5 pt-1">
-                    <label className="text-xs text-slate-300 font-medium">Select Operational Authority</label>
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div
-                        onClick={() => { setRegRole('MLRO_OFFICER'); setOrgKey('MLRO-AUTH-2026'); }}
-                        className={`p-3 rounded-xl border text-left cursor-pointer transition ${
-                          regRole === 'MLRO_OFFICER'
-                            ? 'bg-cyan-500/10 border-cyan-500/60 ring-1 ring-cyan-500/30'
-                            : 'bg-[#05070e] border-slate-800 hover:border-slate-700 opacity-60'
-                        }`}
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200 cursor-pointer"
                       >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                            <Scale className="w-3.5 h-3.5 text-cyan-400" /> MLRO Officer
-                          </span>
-                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-bold">FULL</span>
-                        </div>
-                        <p className="text-[10px] text-slate-400 leading-tight">
-                          Full Adjudication Authority &bull; Fund Freeze &bull; FIU-IND SAR Filing
-                        </p>
-                      </div>
-
-                      <div
-                        onClick={() => { setRegRole('ANALYST'); setOrgKey('ANALYST-AUTH-2026'); }}
-                        className={`p-3 rounded-xl border text-left cursor-pointer transition ${
-                          regRole === 'ANALYST'
-                            ? 'bg-indigo-500/10 border-indigo-500/60 ring-1 ring-indigo-500/30'
-                            : 'bg-[#05070e] border-slate-800 hover:border-slate-700 opacity-60'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                            <UserCheck className="w-3.5 h-3.5 text-indigo-400" /> AML Analyst
-                          </span>
-                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-bold">MONITOR</span>
-                        </div>
-                        <p className="text-[10px] text-slate-400 leading-tight">
-                          Transaction Monitoring &bull; Anomaly Simulation &bull; Evidence Compilation
-                        </p>
-                      </div>
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
                     </div>
-                  </div>
-
-                  {/* Institutional Security Passcode */}
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-xs">
-                      <label className="text-slate-300 font-medium flex items-center gap-1.5">
-                        <KeyRound className="w-3.5 h-3.5 text-amber-400" /> Organization Authorization Key
-                      </label>
-                      <span className="text-[10px] font-mono text-slate-400">
-                        Required for {regRole}
-                      </span>
-                    </div>
-                    <input
-                      type="text"
-                      value={orgKey}
-                      onChange={(e) => setOrgKey(e.target.value)}
-                      placeholder="Enter organizational authorization passcode"
-                      className="w-full bg-[#05070e] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-amber-200 focus:outline-none focus:border-amber-500 transition font-mono"
-                      required
-                    />
                   </div>
 
                   {authError && (
@@ -603,17 +436,111 @@ export default function App() {
                   <button
                     type="submit"
                     disabled={authLoading}
-                    className="w-full bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-semibold py-3 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-600/25 mt-2"
+                    className="w-full bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-semibold py-3 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/25 mt-2"
                   >
-                    {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
-                    <span>Provision Verified Officer Account</span>
+                    {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+                    <span>Verify Credentials & Request 2FA</span>
                   </button>
+
+                  {/* Pre-Provisioned Enterprise Badge Directory */}
+                  <div className="pt-4 mt-2 border-t border-slate-800/80 space-y-2">
+                    <div className="flex justify-between items-center text-[11px] text-slate-400 font-medium">
+                      <span>Enterprise Pre-Provisioned Personnel Roster:</span>
+                      <span className="text-[10px] text-indigo-400">Click to Select</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => { setUsername('analyst.verma'); setPassword('Analyst@2026'); }}
+                        className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                          username === 'analyst.verma' ? 'bg-indigo-500/10 border-indigo-500/60 ring-1 ring-indigo-500/30' : 'bg-[#05070e] border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-white">Rohan Verma</span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold">MAKER</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-1">Role: ANALYST &bull; Badge: AML-33012</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => { setUsername('officer.sharma'); setPassword('Compliance@2026'); }}
+                        className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                          username === 'officer.sharma' ? 'bg-cyan-500/10 border-cyan-500/60 ring-1 ring-cyan-500/30' : 'bg-[#05070e] border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-white">Priya Sharma</span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold">CHECKER</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-1">Role: MLRO_OFFICER &bull; Badge: AML-88219</div>
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              ) : (
+                /* STEP 2: MFA 6-DIGIT CODE FORM */
+                <form onSubmit={handleStep2Submit} className="space-y-4">
+                  <div className="p-3.5 rounded-xl bg-[#05070e] border border-slate-800 space-y-1">
+                    <div className="text-xs text-slate-400 font-medium">Authenticating Identity:</div>
+                    <div className="text-sm font-bold text-white flex items-center justify-between">
+                      <span>{pendingOfficerInfo?.officer_name}</span>
+                      <span className="text-xs font-mono text-cyan-400">Badge: {pendingOfficerInfo?.badge_id}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <label className="text-slate-300 font-medium flex items-center gap-1.5">
+                        <Smartphone className="w-4 h-4 text-emerald-400" /> Enter 6-Digit Authenticator Code (TOTP)
+                      </label>
+                      <span className="text-[10px] font-mono text-emerald-400">
+                        {pendingOfficerInfo?.role === 'MLRO_OFFICER' ? "Code: 123456" : "Code: 654321"}
+                      </span>
+                    </div>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      autoFocus
+                      value={totpCode}
+                      onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                      placeholder="••••••"
+                      className="w-full bg-[#05070e] border border-slate-800 rounded-xl px-4 py-3 text-center text-lg tracking-[0.5em] text-white focus:outline-none focus:border-emerald-500 transition font-mono font-bold"
+                      required
+                    />
+                  </div>
+
+                  {authError && (
+                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>{authError}</span>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => { setLoginStep(1); setTotpCode(''); }}
+                      className="w-1/3 py-3 rounded-xl text-xs bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800 transition cursor-pointer"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={authLoading || totpCode.length !== 6}
+                      className="w-2/3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-600/25 disabled:opacity-50"
+                    >
+                      {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                      <span>Validate & Open Session</span>
+                    </button>
+                  </div>
                 </form>
               )}
             </div>
 
             <p className="text-[11px] text-slate-500 text-center mt-6">
-              FinSight AI Institutional Governance &bull; Regulated Banking Compliance Platform
+              FinSight AI Institutional Terminal &bull; Bank Identity Synchronization Active
             </p>
           </div>
         </div>
@@ -627,7 +554,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#06080f] text-slate-100 flex flex-col font-sans antialiased selection:bg-indigo-500/30">
       
-      {/* Navigation Header */}
+      {/* Header */}
       <header className="border-b border-slate-800/80 bg-[#090d18]/90 backdrop-blur-md px-6 py-3 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-400 p-[1px] shadow-lg shadow-indigo-500/20">
@@ -639,23 +566,21 @@ export default function App() {
             <div className="flex items-center gap-2">
               <h1 className="text-sm font-bold tracking-wider text-white uppercase font-mono">FINSIGHT INTELLIGENCE</h1>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
-                SYSTEM OPERATIONAL
+                DUAL-CONTROL HITL
               </span>
             </div>
-            <p className="text-[11px] text-slate-400">Autonomous Regulatory Compliance & Suspicious Activity Decisioning</p>
+            <p className="text-[11px] text-slate-400">Autonomous AML Anomaly Detection & Maker-Checker Adjudication</p>
           </div>
         </div>
 
-        {/* Global Officer Session Badge + Governance Control */}
+        {/* Global Officer Badge & Controls */}
         <div className="flex items-center gap-3 text-xs">
-          {/* Access & Governance Drawer Button */}
           <button
             onClick={() => setGovModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-300 transition cursor-pointer font-sans text-xs font-medium"
-            title="Inspect Personnel Directory & Security Audit Logs"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition cursor-pointer font-sans text-xs font-medium"
           >
             <History className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Access & Governance</span>
+            <span>Personnel & Security Logs</span>
           </button>
 
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-indigo-300">
@@ -664,13 +589,12 @@ export default function App() {
             <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded font-bold uppercase ${
               currentUser.role === 'MLRO_OFFICER' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-indigo-600/30 text-indigo-300'
             }`}>
-              {currentUser.role}
+              {currentUser.role === 'MLRO_OFFICER' ? "CHECKER" : "MAKER"}
             </span>
           </div>
 
           <button
             onClick={handleLogout}
-            title="Secure Server-Side Logout"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-rose-500/10 border border-slate-800 hover:border-rose-500/30 text-slate-400 hover:text-rose-400 transition cursor-pointer font-sans font-medium"
           >
             <LogOut className="w-3.5 h-3.5" />
@@ -679,10 +603,10 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Command Deck */}
+      {/* Main Deck */}
       <main className="flex-1 max-w-[1600px] w-full mx-auto p-4 md:p-6 space-y-6">
         
-        {/* Dynamic Parameter Injector Deck */}
+        {/* Transaction Synthesizer Deck */}
         <section className="bg-gradient-to-b from-[#0b1020] to-[#080c18] border border-slate-800 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-5 pb-4 border-b border-slate-800/80">
             <div>
@@ -690,7 +614,7 @@ export default function App() {
                 <Sliders className="w-4 h-4 text-indigo-400" />
                 <span>Transaction Injection & Counterparty Parameters</span>
               </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">Configure transaction details or generate dynamic synthetic records for audit evaluation.</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Configure transaction attributes and trigger multi-agent investigation.</p>
             </div>
 
             <button
@@ -702,7 +626,7 @@ export default function App() {
             </button>
           </div>
 
-          {/* Form Fields Grid */}
+          {/* Form Fields */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-5 text-xs">
             <div className="md:col-span-3 space-y-1.5">
               <label className="text-slate-400 font-medium flex items-center gap-1.5">
@@ -751,9 +675,7 @@ export default function App() {
                 type="button"
                 onClick={() => setFormData({ ...formData, beneficiary_is_new: !formData.beneficiary_is_new })}
                 className={`w-full py-2.5 px-4 rounded-xl border text-xs font-semibold flex items-center justify-between transition cursor-pointer ${
-                  formData.beneficiary_is_new
-                    ? 'bg-amber-500/10 border-amber-500/40 text-amber-300'
-                    : 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'
+                  formData.beneficiary_is_new ? 'bg-amber-500/10 border-amber-500/40 text-amber-300' : 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -761,12 +683,12 @@ export default function App() {
                   <span>{formData.beneficiary_is_new ? "First-Time Beneficiary" : "Historical Established Linkage"}</span>
                 </div>
                 <span className="text-[10px] px-2 py-0.5 rounded font-mono uppercase bg-black/40">
-                  {formData.beneficiary_is_new ? "EDD Trigger" : "Standard"}
+                  {formData.beneficiary_is_new ? "EDD Mandated" : "Standard"}
                 </span>
               </button>
             </div>
 
-            {/* Sliders: Amount & Baseline */}
+            {/* Sliders */}
             <div className="md:col-span-6 bg-[#060912] p-4 rounded-xl border border-slate-800/80 space-y-2.5">
               <div className="flex justify-between items-center text-xs">
                 <span className="text-slate-400 font-medium">Transaction Amount</span>
@@ -806,14 +728,12 @@ export default function App() {
               />
             </div>
 
-            {/* Narration Memo & Manual Trigger Button */}
             <div className="md:col-span-9 space-y-1.5">
-              <label className="text-slate-400 font-medium">Transaction Narration / Purpose Memo</label>
+              <label className="text-slate-400 font-medium">Payment Narration / Purpose Memo</label>
               <input
                 type="text"
                 value={formData.narration}
                 onChange={(e) => setFormData({ ...formData, narration: e.target.value })}
-                placeholder="Type custom memo..."
                 className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500 transition font-medium"
               />
             </div>
@@ -837,50 +757,82 @@ export default function App() {
           )}
         </section>
 
-        {/* Live State Banner */}
+        {/* Maker-Checker Workflow Banner */}
         {caseData && (
           <div>
-            {caseData.requires_human_review ? (
-              <div className="p-4 rounded-2xl border bg-amber-500/10 border-amber-500/30 text-amber-200 flex items-center justify-between shadow-lg shadow-amber-500/5">
+            {caseData.requires_maker_review ? (
+              /* STAGE 1: PENDING MAKER RECOMMENDATION */
+              <div className="p-4 rounded-2xl border bg-amber-500/10 border-amber-500/30 text-amber-200 flex items-center justify-between shadow-lg">
                 <div className="flex items-center gap-3.5">
                   <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400">
-                    <AlertTriangle className="w-5 h-5 animate-pulse" />
+                    <UserCheck className="w-5 h-5 animate-pulse" />
                   </div>
                   <div>
                     <h4 className="text-sm font-bold tracking-wide text-amber-300">
-                      COMPLIANCE WORKFLOW SUSPENDED — HUMAN ADJUDICATION MANDATORY
+                      STAGE 1: AWAITING ANALYST RECOMMENDATION (MAKER)
                     </h4>
                     <p className="text-xs text-amber-200/80 font-mono mt-0.5">
-                      Case: <span className="font-bold">{caseData.case_id}</span> &bull; Risk: <span className="font-bold">{riskPercent}%</span> &bull; Workflow safely paused for regulatory sign-off.
+                      Case: <span className="font-bold">{caseData.case_id}</span> &bull; Risk: <span className="font-bold">{riskPercent}%</span> &bull; Anomaly detected. Analyst must investigate and recommend action.
                     </p>
                   </div>
                 </div>
 
                 <button
-                  onClick={() => setHumanModalOpen(true)}
-                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2 rounded-xl text-xs transition cursor-pointer shadow-lg shadow-amber-500/20 flex items-center gap-2"
+                  onClick={() => setAdjudicationModalOpen(true)}
+                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2 rounded-xl text-xs transition cursor-pointer shadow-lg flex items-center gap-2"
                 >
                   <UserCheck className="w-4 h-4" />
-                  <span>Adjudicate Decision</span>
+                  <span>Submit Recommendation (Maker)</span>
                 </button>
               </div>
-            ) : isManuallyAdjudicated ? (
-              <div className="p-4 rounded-2xl border bg-indigo-500/10 border-indigo-500/30 text-indigo-200 flex items-center justify-between shadow-lg shadow-indigo-500/5">
+            ) : caseData.requires_checker_review ? (
+              /* STAGE 2: PENDING MLRO CHECKER FINAL EXECUTION */
+              <div className="p-4 rounded-2xl border bg-cyan-500/10 border-cyan-500/30 text-cyan-200 flex items-center justify-between shadow-lg">
+                <div className="flex items-center gap-3.5">
+                  <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-400">
+                    <GitMerge className="w-5 h-5 animate-bounce" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-bold tracking-wide text-cyan-300">
+                        STAGE 2: AWAITING MLRO OFFICER ADJUDICATION (CHECKER)
+                      </h4>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                        MAKER: {caseData.maker_status?.decision}
+                      </span>
+                    </div>
+                    <p className="text-xs text-cyan-200/80 font-mono mt-0.5">
+                      Analyst {caseData.maker_status?.officer} recommended action: "{caseData.maker_status?.summary}". MLRO Checker approval required.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setAdjudicationModalOpen(true)}
+                  className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-4 py-2 rounded-xl text-xs transition cursor-pointer shadow-lg flex items-center gap-2"
+                >
+                  <Scale className="w-4 h-4" />
+                  <span>Execute Ruling (Checker)</span>
+                </button>
+              </div>
+            ) : caseData.final_verdict && caseData.final_verdict !== "AUTO_APPROVED" ? (
+              /* FINALIZED DUAL-CONTROL ADJUDICATION */
+              <div className="p-4 rounded-2xl border bg-indigo-500/10 border-indigo-500/30 text-indigo-200 flex items-center justify-between shadow-lg">
                 <div className="flex items-center gap-3.5">
                   <div className="p-2.5 rounded-xl bg-indigo-500/20 text-indigo-400">
-                    <Scale className="w-5 h-5" />
+                    <CheckCircle2 className="w-5 h-5" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
                       <h4 className="text-sm font-bold tracking-wide text-indigo-300">
-                        OFFICIAL COMPLIANCE ADJUDICATION RECORDED
+                        DUAL-CONTROL STATUTORY ADJUDICATION COMPLETED
                       </h4>
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
                         {caseData.final_verdict}
                       </span>
                     </div>
                     <p className="text-xs text-indigo-200/80 font-mono mt-0.5">
-                      Case: <span className="font-bold">{caseData.case_id}</span> &bull; Status: <span className="font-bold">{caseData.status}</span> &bull; Officer: <span className="font-bold">{currentUser.full_name}</span>
+                      Signed off under Four-Eyes Principle. Action executed on Core Banking Ledger.
                     </p>
                   </div>
                 </div>
@@ -894,7 +846,8 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <div className="p-4 rounded-2xl border bg-emerald-500/10 border-emerald-500/30 text-emerald-200 flex items-center justify-between shadow-lg shadow-emerald-500/5">
+              /* AUTO-CLEARED */
+              <div className="p-4 rounded-2xl border bg-emerald-500/10 border-emerald-500/30 text-emerald-200 flex items-center justify-between shadow-lg">
                 <div className="flex items-center gap-3.5">
                   <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400">
                     <CheckCircle2 className="w-5 h-5" />
@@ -904,7 +857,7 @@ export default function App() {
                       TRANSACTION CLEARED BY AUTONOMOUS POLICY ENGINE
                     </h4>
                     <p className="text-xs opacity-80 font-mono mt-0.5">
-                      Case: <span className="font-bold">{caseData.case_id}</span> &bull; Risk Score: <span className="font-bold">{riskPercent}%</span> &bull; Below 70% threshold &bull; Status: Cleared
+                      Risk Score: {riskPercent}% &bull; Below 70% threshold &bull; Ledger Cleared
                     </p>
                   </div>
                 </div>
@@ -916,7 +869,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Telemetry & Evidence Workspace */}
+        {/* Workspace Telemetry */}
         <div className="grid grid-cols-12 gap-6">
           <div className="col-span-12 lg:col-span-4 space-y-6">
             <div className="bg-[#0b1020] border border-slate-800 rounded-2xl p-5 shadow-xl">
@@ -955,9 +908,7 @@ export default function App() {
               <div className="w-full bg-slate-900 h-3 rounded-full overflow-hidden p-0.5 border border-slate-800">
                 <div 
                   className={`h-full rounded-full transition-all duration-700 ease-out ${
-                    riskPercent >= 70 
-                      ? 'bg-gradient-to-r from-amber-500 to-rose-500 shadow-lg shadow-rose-500/50' 
-                      : (riskPercent >= 35 ? 'bg-gradient-to-r from-cyan-500 to-amber-500' : 'bg-gradient-to-r from-cyan-500 to-emerald-500')
+                    riskPercent >= 70 ? 'bg-gradient-to-r from-amber-500 to-rose-500 shadow-lg' : 'bg-gradient-to-r from-cyan-500 to-emerald-500'
                   }`}
                   style={{ width: `${riskPercent || 0}%` }}
                 />
@@ -1014,9 +965,7 @@ export default function App() {
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
                       className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold border-b-2 transition cursor-pointer ${
-                        activeTab === tab.id
-                          ? 'border-indigo-500 text-indigo-400 bg-indigo-500/5'
-                          : 'border-transparent text-slate-400 hover:text-slate-200'
+                        activeTab === tab.id ? 'border-indigo-500 text-indigo-400 bg-indigo-500/5' : 'border-transparent text-slate-400 hover:text-slate-200'
                       }`}
                     >
                       <Icon className="w-3.5 h-3.5" />
@@ -1041,11 +990,7 @@ export default function App() {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <span className="font-mono font-bold text-indigo-400">{f.agent}</span>
-                            <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded uppercase ${
-                              f.risk_level === 'HIGH' 
-                                ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' 
-                                : (f.risk_level === 'MEDIUM' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30')
-                            }`}>
+                            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded uppercase bg-rose-500/10 text-rose-400 border border-rose-500/30">
                               {f.risk_level} SEVERITY
                             </span>
                           </div>
@@ -1138,7 +1083,152 @@ export default function App() {
         </div>
       </main>
 
-      {/* 3. ACCESS & GOVERNANCE MODAL (DIRECTORY + SECURITY AUDIT LOGS) */}
+      {/* 3. DUAL-CONTROL ADJUDICATION MODAL (MAKER vs CHECKER) */}
+      {adjudicationModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-[#0b1020] border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-cyan-500/10 text-cyan-400 rounded-xl border border-cyan-500/20">
+                  <GitMerge className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Dual-Control Statutory Adjudication</h3>
+                  <p className="text-xs text-slate-400 font-mono">
+                    Case: {caseData?.case_id} &bull; Officer: {currentUser.full_name}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setAdjudicationModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* STAGE A: MAKER RECOMMENDATION (ANALYST) */}
+            {caseData?.requires_maker_review ? (
+              <div className="space-y-4">
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-300 leading-relaxed">
+                  <strong>Stage 1 (Maker Review):</strong> As an Analyst, record your investigation findings and recommend an action. The funds will remain suspended until an independent MLRO Officer reviews this.
+                </div>
+
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <label className="text-slate-300 block mb-1 font-semibold">Recommended Action</label>
+                    <select
+                      value={makerRecDecision}
+                      onChange={(e) => setMakerRecDecision(e.target.value)}
+                      className="w-full bg-[#060912] border border-slate-700 rounded-xl p-3 text-slate-200 font-mono focus:outline-none focus:border-amber-500 font-semibold"
+                    >
+                      <option value="RECOMMEND_REJECT">RECOMMEND REJECT (Recommend freezing transfer & filing SAR)</option>
+                      <option value="RECOMMEND_ESCALATE">RECOMMEND ESCALATE (Recommend referral to Legal / FIU-IND)</option>
+                      <option value="RECOMMEND_APPROVE">RECOMMEND APPROVE (Recommend clearing transaction)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 block mb-1 font-semibold">Investigator Findings & Justification</label>
+                    <textarea
+                      rows={3}
+                      value={makerNotes}
+                      onChange={(e) => setMakerNotes(e.target.value)}
+                      placeholder="e.g. Beneficiary is an unverified shell company with 18.8x velocity spike..."
+                      className="w-full bg-[#060912] border border-slate-700 rounded-xl p-3 text-slate-200 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    onClick={() => setAdjudicationModalOpen(false)}
+                    className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleMakerSubmit}
+                    disabled={loading}
+                    className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-5 py-2.5 rounded-xl text-xs transition cursor-pointer flex items-center gap-2"
+                  >
+                    {loading && <RefreshCw className="w-4 h-4 animate-spin" />}
+                    <span>Submit Recommendation (Maker)</span>
+                  </button>
+                </div>
+              </div>
+            ) : caseData?.requires_checker_review ? (
+              /* STAGE B: CHECKER EXECUTION (MLRO OFFICER) */
+              <div className="space-y-4">
+                {currentUser.role !== 'MLRO_OFFICER' ? (
+                  <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs space-y-2">
+                    <div className="font-bold flex items-center gap-1.5">
+                      <Lock className="w-4 h-4" /> Authority Restriction (Four-Eyes Principle)
+                    </div>
+                    <div>
+                      You are currently logged in as <strong>{currentUser.full_name} ({currentUser.role})</strong>. Under central bank regulations, the Maker cannot approve their own recommendation.
+                    </div>
+                    <div className="text-[11px] text-slate-400 pt-1">
+                      Sign out and sign in as <strong>Officer Priya Sharma (MLRO_OFFICER)</strong> to execute the final statutory ruling.
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="p-3 bg-[#060912] border border-slate-800 rounded-xl text-xs space-y-1.5">
+                      <div className="text-slate-400 font-semibold">Maker Recommendation on Record:</div>
+                      <div className="text-cyan-400 font-mono font-bold">{caseData.maker_status?.decision}</div>
+                      <div className="text-slate-300 italic">"{caseData.maker_status?.summary}"</div>
+                      <div className="text-[10px] text-slate-500">Submitted by: {caseData.maker_status?.officer}</div>
+                    </div>
+
+                    <div className="space-y-3 text-xs">
+                      <div>
+                        <label className="text-slate-300 block mb-1 font-semibold">Final Checker Statutory Ruling</label>
+                        <select
+                          value={checkerFinalDecision}
+                          onChange={(e) => setCheckerFinalDecision(e.target.value)}
+                          className="w-full bg-[#060912] border border-slate-700 rounded-xl p-3 text-slate-200 font-mono focus:outline-none focus:border-cyan-500 font-semibold"
+                        >
+                          <option value="CONFIRMED_REJECTED">CONFIRM REJECT (Freeze Account & Transmit SAR to FIU)</option>
+                          <option value="CONFIRMED_ESCALATED">CONFIRM ESCALATE (Refer to Law Enforcement / FIU-IND)</option>
+                          <option value="OVERRIDDEN_APPROVED">OVERRIDE & APPROVE (Release Transfer Funds)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-slate-300 block mb-1 font-semibold">MLRO Officer Statutory Rationale</label>
+                        <textarea
+                          rows={3}
+                          value={checkerNotes}
+                          onChange={(e) => setCheckerNotes(e.target.value)}
+                          placeholder="Record formal legal rationale for statutory audit logs..."
+                          className="w-full bg-[#060912] border border-slate-700 rounded-xl p-3 text-slate-200 focus:outline-none focus:border-cyan-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-2">
+                      <button
+                        onClick={() => setAdjudicationModalOpen(false)}
+                        className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleCheckerSubmit}
+                        disabled={loading}
+                        className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-5 py-2.5 rounded-xl text-xs transition cursor-pointer flex items-center gap-2"
+                      >
+                        {loading && <RefreshCw className="w-4 h-4 animate-spin" />}
+                        <span>Execute Final Ruling (Checker)</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      {/* 4. GOVERNANCE MODAL */}
       {govModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
           <div className="bg-[#0b1020] border border-slate-800 rounded-3xl max-w-3xl w-full p-6 shadow-2xl space-y-5">
@@ -1148,19 +1238,15 @@ export default function App() {
                   <ShieldCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white">Access Governance & Institutional Security Console</h3>
-                  <p className="text-xs text-slate-400 font-mono">Personnel RBAC Directory & Immutable Audit Trail</p>
+                  <h3 className="text-sm font-bold text-white">Personnel Directory & Security Audit Logs</h3>
+                  <p className="text-xs text-slate-400 font-mono">Pre-Provisioned Officers & Immutable System Events</p>
                 </div>
               </div>
-              <button
-                onClick={() => setGovModalOpen(false)}
-                className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-900 transition cursor-pointer"
-              >
+              <button onClick={() => setGovModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Inner Tabs */}
             <div className="flex gap-2 p-1 bg-[#060912] rounded-xl border border-slate-800 text-xs font-semibold w-fit">
               <button
                 onClick={() => setGovTab('directory')}
@@ -1169,7 +1255,7 @@ export default function App() {
                 }`}
               >
                 <Users className="w-3.5 h-3.5" />
-                <span>Personnel Directory ({officerList.length})</span>
+                <span>Personnel Roster ({officerList.length})</span>
               </button>
               <button
                 onClick={() => setGovTab('logs')}
@@ -1182,12 +1268,11 @@ export default function App() {
               </button>
             </div>
 
-            {/* Content Area */}
             <div className="max-h-[380px] overflow-y-auto space-y-2.5 pr-1">
               {loadingGov ? (
                 <div className="py-16 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
                   <RefreshCw className="w-4 h-4 animate-spin text-indigo-400" />
-                  <span>Loading governance records...</span>
+                  <span>Loading records...</span>
                 </div>
               ) : govTab === 'directory' ? (
                 officerList.map((off, idx) => (
@@ -1200,7 +1285,7 @@ export default function App() {
                         <div className="font-semibold text-white flex items-center gap-2">
                           <span>{off.full_name}</span>
                           {off.username === currentUser.username && (
-                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-mono">ACTIVE YOU</span>
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-mono">ACTIVE</span>
                           )}
                         </div>
                         <div className="text-[11px] text-slate-400 font-mono">
@@ -1211,11 +1296,9 @@ export default function App() {
 
                     <div className="text-right space-y-1">
                       <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold uppercase border ${
-                        off.role === 'MLRO_OFFICER'
-                          ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30'
-                          : 'bg-indigo-500/10 text-indigo-300 border-indigo-500/30'
+                        off.role === 'MLRO_OFFICER' ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30' : 'bg-indigo-500/10 text-indigo-300 border-indigo-500/30'
                       }`}>
-                        {off.role}
+                        {off.role === 'MLRO_OFFICER' ? "CHECKER" : "MAKER"}
                       </span>
                       <div className="text-[10px] text-slate-500">{off.department}</div>
                     </div>
@@ -1227,11 +1310,11 @@ export default function App() {
                     <div className="flex items-center justify-between">
                       <span className="text-cyan-400 font-bold">{log.event_type}</span>
                       <span className="text-[10px] text-slate-500">
-                        {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        {new Date(log.created_at).toLocaleTimeString()}
                       </span>
                     </div>
                     <div className="text-slate-300 text-[11px]">
-                      Officer: <span className="text-white font-semibold">{log.username || 'System'}</span> {log.badge_id ? `(${log.badge_id})` : ''} &bull; {log.details}
+                      Officer: {log.username || 'System'} {log.badge_id ? `(${log.badge_id})` : ''} &bull; {log.details}
                     </div>
                   </div>
                 ))
@@ -1243,71 +1326,7 @@ export default function App() {
                 onClick={() => setGovModalOpen(false)}
                 className="px-5 py-2 rounded-xl text-xs bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition cursor-pointer"
               >
-                Close Governance Panel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 4. Human-In-The-Loop Adjudication Modal */}
-      {humanModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-          <div className="bg-[#0b1020] border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5">
-            <div className="flex items-center gap-3.5">
-              <div className="p-3 bg-amber-500/20 text-amber-400 rounded-xl">
-                <UserCheck className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-white">Compliance Officer Adjudication Sign-Off</h3>
-                <p className="text-xs text-slate-400 font-mono">Case ID: {caseData?.case_id} &bull; Officer: {currentUser.full_name}</p>
-              </div>
-            </div>
-
-            <p className="text-xs text-slate-300 bg-[#060912] p-3.5 rounded-xl border border-slate-800 leading-relaxed">
-              Automated execution halted because cumulative risk reached <strong className="text-rose-400 font-mono">{riskPercent}%</strong>. As an authorized <strong className="text-cyan-400">{currentUser.role}</strong>, record your formal ruling:
-            </p>
-
-            <div className="space-y-3.5 text-xs">
-              <div>
-                <label className="text-slate-300 block mb-1 font-semibold">Official Adjudication Ruling</label>
-                <select
-                  value={resumeAction}
-                  onChange={(e) => setResumeAction(e.target.value)}
-                  className="w-full bg-[#060912] border border-slate-700 rounded-xl p-3 text-slate-200 font-mono focus:outline-none focus:border-indigo-500 font-semibold"
-                >
-                  <option value="REJECTED">REJECT (Block Transfer & Freeze Account Funds)</option>
-                  <option value="ESCALATED">ESCALATE (Refer to Legal / FIU-IND Suspicious Activity Filing)</option>
-                  <option value="APPROVED">APPROVE (Override & Release Transaction Funds)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-slate-300 block mb-1 font-semibold">Auditor Justification & Notes</label>
-                <textarea
-                  rows={3}
-                  value={decisionNotes}
-                  onChange={(e) => setDecisionNotes(e.target.value)}
-                  placeholder="Record formal statutory justification for compliance logs..."
-                  className="w-full bg-[#060912] border border-slate-700 rounded-xl p-3 text-slate-200 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 pt-2">
-              <button
-                onClick={() => setHumanModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-slate-200 cursor-pointer font-medium"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleResumeHITL}
-                disabled={loading}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-5 py-2.5 rounded-xl text-xs transition cursor-pointer flex items-center gap-2 shadow-lg shadow-indigo-600/30"
-              >
-                {loading && <RefreshCw className="w-4 h-4 animate-spin" />}
-                <span>Submit Ruling & Resume Graph</span>
+                Close Panel
               </button>
             </div>
           </div>
