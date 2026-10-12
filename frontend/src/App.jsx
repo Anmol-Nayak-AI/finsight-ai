@@ -291,23 +291,31 @@ export default function App() {
           {/* Quick Demo Credentials */}
           <div className="pt-4 border-t border-slate-800/80 space-y-2 text-xs">
             <span className="text-[11px] text-slate-500 font-mono block">One-Click Security Credentials:</span>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                onClick={() => handleLogin('admin.patel', 'SuperAdmin@2026')}
+                className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-left text-[11px] text-slate-300 transition"
+              >
+                <div className="font-bold text-amber-400">Dir. Patel</div>
+                <div className="text-[10px] text-slate-500">SUPER_ADMIN</div>
+              </button>
               <button
                 onClick={() => handleLogin('officer.sharma', 'Compliance@2026')}
                 className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-left text-[11px] text-slate-300 transition"
               >
-                <div className="font-bold text-cyan-400">Officer Sharma</div>
-                <div className="text-[10px] text-slate-500">Role: MLRO_OFFICER</div>
+                <div className="font-bold text-cyan-400">Off. Sharma</div>
+                <div className="text-[10px] text-slate-500">MLRO_OFFICER</div>
               </button>
               <button
                 onClick={() => handleLogin('analyst.verma', 'Analyst@2026')}
                 className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-left text-[11px] text-slate-300 transition"
               >
-                <div className="font-bold text-indigo-400">Analyst Verma</div>
-                <div className="text-[10px] text-slate-500">Role: ANALYST</div>
+                <div className="font-bold text-indigo-400">An. Verma</div>
+                <div className="text-[10px] text-slate-500">ANALYST</div>
               </button>
             </div>
           </div>
+
         </div>
       </div>
     );
