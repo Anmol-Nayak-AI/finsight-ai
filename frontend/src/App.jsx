@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   ShieldAlert, 
   CheckCircle2, 
@@ -14,18 +14,18 @@ import {
   CreditCard, 
   User, 
   Shield, 
-  Fingerprint, 
   Terminal, 
   Activity, 
   Download, 
   Database, 
   FileCheck, 
   Scale, 
-  Dices,
-  Lock,
-  LogOut,
-  BadgeCheck,
-  UserCheck2
+  Dices, 
+  Lock, 
+  LogOut, 
+  BadgeCheck, 
+  UserPlus, 
+  LogIn 
 } from 'lucide-react';
 
 const RANDOM_ORIGINATORS = [
@@ -48,13 +48,23 @@ export default function App() {
   const [authToken, setAuthToken] = useState(localStorage.getItem('finsight_token') || '');
   const [currentUser, setCurrentUser] = useState(JSON.parse(localStorage.getItem('finsight_user') || 'null'));
   
-  // Auth Form State
-  const [usernameInput, setUsernameInput] = useState('officer.sharma');
-  const [passwordInput, setPasswordInput] = useState('Compliance@2026');
+  // Auth Mode: 'LOGIN' or 'REGISTER'
+  const [authMode, setAuthMode] = useState('LOGIN');
+  const [loginUsername, setLoginUsername] = useState('officer.sharma');
+  const [loginPassword, setLoginPassword] = useState('Compliance@2026');
+
+  // Register Fields
+  const [regFullName, setRegFullName] = useState('');
+  const [regUsername, setRegUsername] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regRole, setRegRole] = useState('MLRO_OFFICER');
+  const [regDepartment, setRegDepartment] = useState('Special Investigations Unit (SIU)');
+
   const [authError, setAuthError] = useState('');
+  const [authSuccess, setAuthSuccess] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
-  // App Workspace State
+  // Workspace State
   const [formData, setFormData] = useState({
     transaction_id: 'TXN-1002491',
     customer_name: 'Aarav Malhotra',
@@ -74,11 +84,13 @@ export default function App() {
   const [resumeAction, setResumeAction] = useState('REJECTED');
   const [errorMessage, setErrorMessage] = useState('');
 
+  // Handle Login
   const handleLogin = async (overrideUser, overridePass) => {
     setAuthLoading(true);
     setAuthError('');
-    const u = overrideUser || usernameInput;
-    const p = overridePass || passwordInput;
+    setAuthSuccess('');
+    const u = overrideUser !== undefined ? overrideUser : loginUsername;
+    const p = overridePass !== undefined ? overridePass : loginPassword;
 
     try {
       const res = await fetch('/api/v1/auth/login', {
@@ -93,6 +105,50 @@ export default function App() {
       }
 
       const data = await res.json();
+      setAuthToken(data.access_token);
+      setCurrentUser(data.user);
+      localStorage.setItem('finsight_token', data.access_token);
+      localStorage.setItem('finsight_user', JSON.stringify(data.user));
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // Handle Register
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError('');
+    setAuthSuccess('');
+
+    if (!regUsername || !regPassword) {
+      setAuthError('Please provide both username and password.');
+      setAuthLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/v1/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: regUsername,
+          password: regPassword,
+          full_name: regFullName || regUsername,
+          role: regRole,
+          department: regDepartment
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Registration failed');
+      }
+
+      const data = await res.json();
+      // Immediately log the newly created user in
       setAuthToken(data.access_token);
       setCurrentUser(data.user);
       localStorage.setItem('finsight_token', data.access_token);
@@ -234,12 +290,15 @@ export default function App() {
   const riskPercent = caseData ? Math.round((caseData.risk_score || 0) * 100) : null;
   const isManuallyAdjudicated = caseData?.final_verdict?.startsWith('MANUAL_');
 
-  // If Not Authenticated, Display Enterprise Login Portal
+  // ==========================================
+  // AUTH PORTAL: LOGIN OR REGISTER
+  // ==========================================
   if (!authToken || !currentUser) {
     return (
       <div className="min-h-screen bg-[#06080f] text-slate-100 flex items-center justify-center p-4 selection:bg-indigo-500/30">
-        <div className="max-w-md w-full bg-[#0b1020] border border-slate-800 rounded-2xl p-8 shadow-2xl space-y-6">
-          <div className="flex items-center gap-3 border-b border-slate-800 pb-5">
+        <div className="max-w-md w-full bg-[#0b1020] border border-slate-800 rounded-2xl p-7 shadow-2xl space-y-5">
+          
+          <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
             <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 p-[1px] shadow-lg shadow-indigo-500/20">
               <div className="h-full w-full bg-[#090d18] rounded-[11px] flex items-center justify-center">
                 <Shield className="w-5 h-5 text-indigo-400" />
@@ -251,76 +310,179 @@ export default function App() {
             </div>
           </div>
 
-          <div className="space-y-4 text-xs">
-            <div>
-              <label className="text-slate-400 font-medium block mb-1.5">Officer Username</label>
-              <input
-                type="text"
-                value={usernameInput}
-                onChange={(e) => setUsernameInput(e.target.value)}
-                className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label className="text-slate-400 font-medium block mb-1.5">Password</label>
-              <input
-                type="password"
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            {authError && (
-              <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono">
-                {authError}
-              </div>
-            )}
-
+          {/* Mode Switcher Tabs */}
+          <div className="grid grid-cols-2 p-1 bg-[#060912] rounded-xl border border-slate-800 text-xs font-semibold">
             <button
-              onClick={() => handleLogin()}
-              disabled={authLoading}
-              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 rounded-xl transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/30"
+              type="button"
+              onClick={() => { setAuthMode('LOGIN'); setAuthError(''); }}
+              className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                authMode === 'LOGIN' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+              }`}
             >
-              {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-              <span>Authenticate Session (JWT)</span>
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Sign In</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setAuthMode('REGISTER'); setAuthError(''); }}
+              className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                authMode === 'REGISTER' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Create Account</span>
             </button>
           </div>
 
-          {/* Quick Demo Credentials */}
-          <div className="pt-4 border-t border-slate-800/80 space-y-2 text-xs">
-            <span className="text-[11px] text-slate-500 font-mono block">One-Click Security Credentials:</span>
-            <div className="grid grid-cols-3 gap-2">
+          {/* TAB 1: LOGIN FORM */}
+          {authMode === 'LOGIN' ? (
+            <div className="space-y-4 text-xs">
+              <div>
+                <label className="text-slate-400 font-medium block mb-1">Officer Username</label>
+                <input
+                  type="text"
+                  value={loginUsername}
+                  onChange={(e) => setLoginUsername(e.target.value)}
+                  className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-400 font-medium block mb-1">Password</label>
+                <input
+                  type="password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              {authError && (
+                <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono">
+                  {authError}
+                </div>
+              )}
+
               <button
-                onClick={() => handleLogin('admin.patel', 'SuperAdmin@2026')}
-                className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-left text-[11px] text-slate-300 transition"
+                type="button"
+                onClick={() => handleLogin()}
+                disabled={authLoading}
+                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 rounded-xl transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/30"
               >
-                <div className="font-bold text-amber-400">Dir. Patel</div>
-                <div className="text-[10px] text-slate-500">SUPER_ADMIN</div>
+                {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
+                <span>Authenticate Session (JWT)</span>
               </button>
-              <button
-                onClick={() => handleLogin('officer.sharma', 'Compliance@2026')}
-                className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-left text-[11px] text-slate-300 transition"
-              >
-                <div className="font-bold text-cyan-400">Off. Sharma</div>
-                <div className="text-[10px] text-slate-500">MLRO_OFFICER</div>
-              </button>
-              <button
-                onClick={() => handleLogin('analyst.verma', 'Analyst@2026')}
-                className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-left text-[11px] text-slate-300 transition"
-              >
-                <div className="font-bold text-indigo-400">An. Verma</div>
-                <div className="text-[10px] text-slate-500">ANALYST</div>
-              </button>
+
+              {/* Fast 1-Click Credentials */}
+              <div className="pt-3 border-t border-slate-800/80 space-y-2 text-xs">
+                <span className="text-[11px] text-slate-500 font-mono block">One-Click Quick Login:</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleLogin('officer.sharma', 'Compliance@2026')}
+                    className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-indigo-500/50 text-left text-[11px] text-slate-300 transition cursor-pointer"
+                  >
+                    <div className="font-bold text-cyan-400">Officer Sharma</div>
+                    <div className="text-[10px] text-slate-500">MLRO_OFFICER (Full)</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleLogin('analyst.verma', 'Analyst@2026')}
+                    className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-indigo-500/50 text-left text-[11px] text-slate-300 transition cursor-pointer"
+                  >
+                    <div className="font-bold text-indigo-400">Analyst Verma</div>
+                    <div className="text-[10px] text-slate-500">ANALYST (Monitor)</div>
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
+          ) : (
+            /* TAB 2: REGISTER FORM */
+            <form onSubmit={handleRegister} className="space-y-3.5 text-xs">
+              <div>
+                <label className="text-slate-400 font-medium block mb-1">Full Legal Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Aarav Malhotra"
+                  value={regFullName}
+                  onChange={(e) => setRegFullName(e.target.value)}
+                  className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2 text-slate-200 focus:outline-none focus:border-indigo-500"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-slate-400 font-medium block mb-1">Username</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. officer.aarav"
+                    value={regUsername}
+                    onChange={(e) => setRegUsername(e.target.value)}
+                    className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2 text-slate-200 focus:outline-none focus:border-indigo-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-400 font-medium block mb-1">Password</label>
+                  <input
+                    type="password"
+                    placeholder="Min 4 characters"
+                    value={regPassword}
+                    onChange={(e) => setRegPassword(e.target.value)}
+                    className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2 text-slate-200 focus:outline-none focus:border-indigo-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-400 font-medium block mb-1">Compliance Role & Authority</label>
+                <select
+                  value={regRole}
+                  onChange={(e) => setRegRole(e.target.value)}
+                  className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2 text-slate-200 font-mono focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="MLRO_OFFICER">MLRO_OFFICER (Full Adjudication & Freeze Authority)</option>
+                  <option value="ANALYST">ANALYST (Transaction Monitoring & Investigation Only)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-slate-400 font-medium block mb-1">Assigned Department</label>
+                <input
+                  type="text"
+                  value={regDepartment}
+                  onChange={(e) => setRegDepartment(e.target.value)}
+                  className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2 text-slate-200 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              {authError && (
+                <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono">
+                  {authError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={authLoading}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 rounded-xl transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-600/30 mt-2"
+              >
+                {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                <span>Create Officer Account & Enter</span>
+              </button>
+            </form>
+          )}
 
         </div>
       </div>
     );
   }
 
+  // ==========================================
+  // MAIN WORKSPACE (AUTHENTICATED)
+  // ==========================================
   return (
     <div className="min-h-screen bg-[#06080f] text-slate-100 flex flex-col font-sans antialiased selection:bg-indigo-500/30">
       
@@ -347,7 +509,7 @@ export default function App() {
         <div className="flex items-center gap-4 text-xs font-mono">
           <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/80 border border-slate-800 text-slate-300">
             <Database className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Partitioned Table:</span>
+            <span>Partitioned Ledger:</span>
             <span className="text-emerald-400 font-bold">1,000,000 Records</span>
           </div>
 
@@ -359,7 +521,7 @@ export default function App() {
 
           <button
             onClick={handleLogout}
-            title="Terminate JWT Session"
+            title="Sign Out Officer Session"
             className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-rose-400 transition cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
