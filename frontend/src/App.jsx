@@ -13,7 +13,6 @@ import {
   Building2, 
   CreditCard, 
   User, 
-  Activity, 
   Download, 
   Scale, 
   Lock, 
@@ -30,9 +29,9 @@ import {
   Smartphone, 
   Check, 
   Archive, 
-  Sparkles, 
   Clock, 
-  Radio 
+  Radio,
+  FileCheck
 } from 'lucide-react';
 
 export default function App() {
@@ -66,7 +65,10 @@ export default function App() {
   const [selectedCase, setSelectedCase] = useState(null);
   const [loadingQueue, setLoadingQueue] = useState(false);
   const [refreshNotification, setRefreshNotification] = useState('');
+  const [executionSuccessNotice, setExecutionSuccessNotice] = useState('');
   const [ingestingStream, setIngestingStream] = useState(false);
+  const [executingRuling, setExecutingRuling] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   // Governance Modal
   const [govModalOpen, setGovModalOpen] = useState(false);
@@ -88,7 +90,6 @@ export default function App() {
 
   const [loading, setLoading] = useState(false);
   const [caseData, setCaseData] = useState(null);
-  const [errorMessage, setErrorMessage] = useState('');
 
   // Adjudication Dialogs
   const [makerModalOpen, setMakerModalOpen] = useState(false);
@@ -162,29 +163,31 @@ export default function App() {
     setTotpCode('');
   };
 
-  // Fetch MLRO Queue from PostgreSQL
-  const fetchExecutiveQueue = async () => {
+  // Fetch MLRO Queue
+  const fetchExecutiveQueue = async (preserveCaseId = null) => {
     setLoadingQueue(true);
+    setErrorMessage('');
     try {
       const res = await fetch('/api/v1/investigations/queue', { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         setCasesList(data);
         
-        // Auto-select first pending case if none selected
-        const pendingOnes = data.filter(c => c.status !== 'FINALIZED');
-        if (pendingOnes.length > 0 && (!selectedCase || selectedCase.status === 'FINALIZED')) {
-          setSelectedCase(pendingOnes[0]);
-        } else if (data.length > 0 && !selectedCase) {
+        if (preserveCaseId) {
+          const match = data.find(c => c.case_id === preserveCaseId);
+          if (match) setSelectedCase(match);
+        } else if (!selectedCase && data.length > 0) {
           setSelectedCase(data[0]);
         }
 
+        const pendingOnes = data.filter(c => c.status !== 'FINALIZED');
         const now = new Date().toLocaleTimeString();
         setRefreshNotification(`✓ Inbox synchronized at ${now} (${pendingOnes.length} pending review)`);
         setTimeout(() => setRefreshNotification(''), 4000);
       }
     } catch (err) {
       console.error(err);
+      setErrorMessage("Failed to sync queue with server.");
     } finally {
       setLoadingQueue(false);
     }
@@ -193,18 +196,19 @@ export default function App() {
   // Ingest Live Stream Anomaly
   const handleIngestStream = async () => {
     setIngestingStream(true);
+    setErrorMessage('');
     try {
       const res = await fetch('/api/v1/investigations/queue/ingest-stream', {
         method: 'POST',
         credentials: 'include'
       });
-      if (res.ok) {
-        await fetchExecutiveQueue();
-        setRefreshNotification(`⚡ Ingested high-risk transfer from 1,000,000-row ledger into queue!`);
-        setTimeout(() => setRefreshNotification(''), 5000);
-      }
+      if (!res.ok) throw new Error("Stream ingestion failed.");
+      const respData = await res.json();
+      await fetchExecutiveQueue(respData.case_id);
+      setRefreshNotification(`⚡ Ingested new high-risk transfer into queue!`);
+      setTimeout(() => setRefreshNotification(''), 5000);
     } catch (err) {
-      console.error(err);
+      setErrorMessage(err.message);
     } finally {
       setIngestingStream(false);
     }
@@ -278,7 +282,7 @@ export default function App() {
     }
   };
 
-  // Maker: Transmit Recommendation to MLRO Queue
+  // Maker: Transmit Recommendation
   const handleMakerSubmit = async () => {
     if (!caseData?.case_id) return;
     setLoading(true);
@@ -290,13 +294,8 @@ export default function App() {
         body: JSON.stringify({ recommendation: makerDecision, findings_summary: makerNotes }),
       });
       if (!res.ok) throw new Error("Maker submission rejected.");
-      setCaseData(prev => ({
-        ...prev,
-        status: 'PENDING_CHECKER',
-        requires_maker_review: false,
-        requires_checker_review: true,
-        maker_status: { decision: makerDecision, summary: makerNotes, officer: `${currentUser.full_name} (${currentUser.badge_id})` }
-      }));
+      const updated = await res.json();
+      setCaseData(updated.case);
       setMakerModalOpen(false);
     } catch (err) {
       setErrorMessage(err.message);
@@ -305,10 +304,13 @@ export default function App() {
     }
   };
 
-  // Checker: Execute Statutory Ruling
+  // Checker: Execute Statutory Ruling (Bug-Free Direct State Update)
   const handleCheckerExecute = async () => {
     if (!selectedCase?.case_id) return;
-    setLoading(true);
+    setExecutingRuling(true);
+    setErrorMessage('');
+    setExecutionSuccessNotice('');
+
     try {
       const res = await fetch(`/api/v1/investigations/${selectedCase.case_id}/checker-execute`, {
         method: 'POST',
@@ -316,16 +318,31 @@ export default function App() {
         credentials: 'include',
         body: JSON.stringify({ final_decision: checkerDecision, statutory_memo: checkerNotes }),
       });
+
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || "Checker authorization failed.");
       }
+
+      const data = await res.json();
+      const finalized = data.case;
+
+      // 1. Instantly update selected case in React state
+      setSelectedCase(finalized);
+      
+      // 2. Update list in state
+      setCasesList(prev => prev.map(c => c.case_id === finalized.case_id ? finalized : c));
+      
+      // 3. Show clear success notice
+      setExecutionSuccessNotice(`✓ Official statutory ruling [${finalized.final_verdict}] executed and permanently recorded in core ledger.`);
       setCheckerNotes('');
-      await fetchExecutiveQueue();
+      
+      // 4. Automatically switch to resolved view after 1.5 seconds if desired
+      setTimeout(() => setExecutionSuccessNotice(''), 6000);
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
-      setLoading(false);
+      setExecutingRuling(false);
     }
   };
 
@@ -351,7 +368,7 @@ export default function App() {
   const displayedCases = inboxTab === 'pending' ? pendingCases : finalizedCases;
 
   // ==========================================
-  // AUTHENTICATION VIEW
+  // AUTHENTICATION SCREEN
   // ==========================================
   if (!currentUser) {
     return (
@@ -635,7 +652,7 @@ export default function App() {
   }
 
   // ==========================================
-  // MAIN WORKSPACE
+  // MAIN WORKSPACE (AUTHENTICATED)
   // ==========================================
   return (
     <div className="min-h-screen bg-[#06080f] text-slate-100 flex flex-col font-sans antialiased selection:bg-indigo-500/30">
@@ -701,7 +718,7 @@ export default function App() {
         {isChecker ? (
           <div className="space-y-6">
             
-            {/* 1. Header Banner & Actions */}
+            {/* Header Banner */}
             <div className="bg-gradient-to-r from-[#0b1426] via-[#091020] to-[#070b16] border border-cyan-500/30 rounded-2xl p-5 shadow-2xl flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-cyan-500/20 text-cyan-400 rounded-xl">
@@ -729,7 +746,7 @@ export default function App() {
                 </button>
 
                 <button
-                  onClick={fetchExecutiveQueue}
+                  onClick={() => fetchExecutiveQueue()}
                   disabled={loadingQueue}
                   className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 rounded-xl text-xs font-mono text-cyan-400 border border-slate-800 transition cursor-pointer"
                 >
@@ -739,7 +756,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Notification Toast */}
+            {/* Notification & Status Messages */}
             {refreshNotification && (
               <div className="p-3 bg-cyan-500/10 border border-cyan-500/30 rounded-xl text-xs text-cyan-300 font-mono flex items-center justify-between animate-in fade-in duration-200">
                 <span>{refreshNotification}</span>
@@ -747,13 +764,25 @@ export default function App() {
               </div>
             )}
 
-            {/* 2. Executive Queue Grid */}
+            {executionSuccessNotice && (
+              <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/40 rounded-xl text-xs text-emerald-300 font-mono flex items-center gap-2 shadow-lg shadow-emerald-500/5 animate-in fade-in duration-200">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{executionSuccessNotice}</span>
+              </div>
+            )}
+
+            {errorMessage && (
+              <div className="p-3.5 bg-rose-500/10 border border-rose-500/40 rounded-xl text-xs text-rose-300 font-mono flex items-center gap-2 animate-in fade-in duration-200">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            {/* Executive Queue Grid */}
             <div className="grid grid-cols-12 gap-6">
               
-              {/* Left Column: Tabbed Case Inbox (Pending vs Finalized) */}
+              {/* Left Column: Case Inbox Tabs */}
               <div className="col-span-12 lg:col-span-4 space-y-3">
-                
-                {/* Inbox Mode Switcher Tabs */}
                 <div className="grid grid-cols-2 p-1 bg-[#060912] rounded-xl border border-slate-800 text-xs font-semibold">
                   <button
                     onClick={() => setInboxTab('pending')}
@@ -775,7 +804,6 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Case Cards List */}
                 <div className="space-y-2.5 max-h-[640px] overflow-y-auto pr-1">
                   {displayedCases.length === 0 ? (
                     <div className="p-12 text-center text-xs text-slate-500 bg-[#0b1020] border border-slate-800 rounded-2xl italic space-y-2">
@@ -813,17 +841,17 @@ export default function App() {
                         </div>
 
                         <div className="text-slate-300 text-xs">
-                          Amount: <strong className="text-cyan-400 font-mono">₹{Number(item.amount || item.transaction_data?.amount || 0).toLocaleString('en-IN')}</strong> &bull; {item.channel || item.transaction_data?.channel}
+                          Amount: <strong className="text-cyan-400 font-mono">₹{Number(item.amount).toLocaleString('en-IN')}</strong> &bull; {item.channel}
                         </div>
 
                         <div className="text-[11px] text-slate-400 truncate">
-                          {item.customer_name || item.transaction_data?.customer_name} &rarr; {item.beneficiary_name || item.transaction_data?.beneficiary_name}
+                          {item.customer_name} &rarr; {item.beneficiary_name}
                         </div>
 
                         {item.maker_status && (
                           <div className="text-[10px] text-amber-300 pt-1 border-t border-slate-800/80 flex items-center justify-between">
                             <span>Maker: {item.maker_status.decision}</span>
-                            <span className="text-slate-500 font-mono">{item.maker_status.officer.split(' ')[0]}</span>
+                            <span className="text-slate-500 font-mono">{item.maker_status.officer?.split(' ')[0] || 'Analyst'}</span>
                           </div>
                         )}
                       </div>
@@ -832,18 +860,17 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Right Column: Complete Evidence Dossier & Execution Deck */}
+              {/* Right Column: Case Dossier & Adjudication Controls */}
               <div className="col-span-12 lg:col-span-8 space-y-6">
                 {selectedCase ? (
                   <div className="bg-[#0b1020] border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-6">
                     
-                    {/* Header */}
                     <div className="flex items-center justify-between border-b border-slate-800 pb-4">
                       <div>
                         <div className="flex items-center gap-2">
                           <h3 className="text-base font-bold text-white font-mono">{selectedCase.case_id}</h3>
                           <span className="text-xs font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
-                            Txn: {selectedCase.transaction_id || selectedCase.transaction_data?.transaction_id}
+                            Txn: {selectedCase.transaction_id}
                           </span>
                         </div>
                         <p className="text-xs text-slate-400 mt-0.5">
@@ -877,24 +904,24 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Transaction Breakdown Metrics */}
+                    {/* Metrics Breakdown */}
                     <div className="grid grid-cols-3 gap-3 text-xs font-mono">
                       <div className="p-3 bg-[#060912] rounded-xl border border-slate-800">
                         <div className="text-[10px] text-slate-500 uppercase">Transaction Value</div>
                         <div className="text-sm font-bold text-cyan-400 mt-0.5">
-                          ₹{Number(selectedCase.amount || selectedCase.transaction_data?.amount || 0).toLocaleString('en-IN')}
+                          ₹{Number(selectedCase.amount).toLocaleString('en-IN')}
                         </div>
                       </div>
                       <div className="p-3 bg-[#060912] rounded-xl border border-slate-800">
                         <div className="text-[10px] text-slate-500 uppercase">30-Day Historical Baseline</div>
                         <div className="text-sm font-bold text-slate-200 mt-0.5">
-                          ₹{Number(selectedCase.historical_avg || selectedCase.transaction_data?.historical_avg || 0).toLocaleString('en-IN')}
+                          ₹{Number(selectedCase.historical_avg).toLocaleString('en-IN')}
                         </div>
                       </div>
                       <div className="p-3 bg-[#060912] rounded-xl border border-slate-800">
                         <div className="text-[10px] text-slate-500 uppercase">Settlement Channel</div>
                         <div className="text-sm font-bold text-slate-200 mt-0.5">
-                          {selectedCase.channel || selectedCase.transaction_data?.channel}
+                          {selectedCase.channel}
                         </div>
                       </div>
                     </div>
@@ -904,7 +931,7 @@ export default function App() {
                       <h4 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">
                         Multi-Agent Evidence & Risk Deltas ({selectedCase.findings?.length || 0})
                       </h4>
-                      <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+                      <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
                         {selectedCase.findings?.map((f, i) => (
                           <div key={i} className="p-3 rounded-xl bg-[#060912] border border-slate-800 text-xs space-y-1">
                             <div className="flex items-center justify-between">
@@ -924,7 +951,7 @@ export default function App() {
                       <h4 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">
                         Retrieved Statutory Mandates (pgvector RRF)
                       </h4>
-                      <div className="space-y-2 max-h-[150px] overflow-y-auto pr-1">
+                      <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
                         {selectedCase.retrieved_policies?.map((p, idx) => (
                           <div key={idx} className="p-2.5 rounded-xl bg-[#060912] border border-slate-800 text-xs space-y-1">
                             <div className="flex items-center justify-between">
@@ -937,21 +964,21 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Adjudication Execution Deck */}
+                    {/* Statutory Adjudication Controls */}
                     {selectedCase.status === 'FINALIZED' ? (
-                      <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between">
+                      <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between shadow-lg">
                         <div className="space-y-1">
                           <div className="font-bold flex items-center gap-1.5">
-                            <CheckCircle2 className="w-4 h-4" /> Ruling Recorded & Archival Sealed
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Ruling Sealed & Recorded in Ledger
                           </div>
-                          <div className="text-[11px] text-slate-300">
-                            Verdict: <strong className="font-mono text-white">{selectedCase.final_verdict}</strong> by {selectedCase.checker_status?.officer}
+                          <div className="text-[11px] text-slate-300 font-mono">
+                            Verdict: <strong className="text-white">{selectedCase.final_verdict}</strong> by {selectedCase.checker_status?.officer || "MLRO"}
                           </div>
                         </div>
 
                         <button
                           onClick={downloadAuditReport}
-                          className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-sans font-medium flex items-center gap-1.5 transition cursor-pointer"
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-sans font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-lg shadow-indigo-600/20"
                         >
                           <Download className="w-3.5 h-3.5" />
                           <span>Export SAR Dossier</span>
@@ -992,11 +1019,11 @@ export default function App() {
                         <div className="flex justify-end gap-3 pt-2">
                           <button
                             onClick={handleCheckerExecute}
-                            disabled={loading}
-                            className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-6 py-2.5 rounded-xl text-xs transition cursor-pointer flex items-center gap-2 shadow-lg shadow-cyan-500/20"
+                            disabled={executingRuling}
+                            className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-6 py-2.5 rounded-xl text-xs transition cursor-pointer flex items-center gap-2 shadow-lg shadow-cyan-500/20 disabled:opacity-50"
                           >
-                            {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Scale className="w-4 h-4" />}
-                            <span>Execute Binding Ruling (Checker)</span>
+                            {executingRuling ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Scale className="w-4 h-4" />}
+                            <span>{executingRuling ? "Recording on Core Ledger..." : "Execute Binding Ruling (Checker)"}</span>
                           </button>
                         </div>
                       </div>
@@ -1015,7 +1042,7 @@ export default function App() {
           </div>
         ) : (
           /* =========================================================================
-              MAKER VIEW: ANALYST INVESTIGATION & SIMULATION WORKBENCH
+              MAKER VIEW: ANALYST INVESTIGATION & TRIAGE DESK
              ========================================================================= */
           <div className="space-y-6">
             
@@ -1158,7 +1185,7 @@ export default function App() {
             {/* Workflow Banner for Maker */}
             {caseData && (
               <div>
-                {caseData.requires_maker_review ? (
+                {caseData.status === 'PENDING_MAKER' ? (
                   <div className="p-4 rounded-2xl border bg-amber-500/10 border-amber-500/30 text-amber-200 flex items-center justify-between shadow-lg">
                     <div className="flex items-center gap-3.5">
                       <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400">
@@ -1182,7 +1209,7 @@ export default function App() {
                       <span>Submit Recommendation to MLRO</span>
                     </button>
                   </div>
-                ) : caseData.requires_checker_review ? (
+                ) : caseData.status === 'PENDING_CHECKER' ? (
                   <div className="p-4 rounded-2xl border bg-cyan-500/10 border-cyan-500/30 text-cyan-200 flex items-center justify-between shadow-lg">
                     <div className="flex items-center gap-3.5">
                       <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-400">
@@ -1366,7 +1393,7 @@ export default function App() {
                 </div>
               </div>
               <button onClick={() => setGovModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
