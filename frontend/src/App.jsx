@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ShieldAlert, 
   CheckCircle2, 
@@ -22,8 +22,33 @@ import {
   Database,
   FileCheck,
   Scale,
-  Dices
+  Dices,
+  Lock,
+  KeyRound,
+  ShieldCheck,
+  UserX
 } from 'lucide-react';
+
+const DEMO_OFFICERS_LIST = [
+  {
+    username: 'officer.sharma',
+    password: 'Compliance@2026',
+    fullName: 'Priya Sharma (CAMS)',
+    role: 'MLRO_OFFICER',
+    roleLabel: 'MLRO Officer (Statutory Authority)',
+    badgeId: 'AML-88219',
+    department: 'Special Investigations Unit (SIU)'
+  },
+  {
+    username: 'analyst.verma',
+    password: 'Analyst@2026',
+    fullName: 'Rohan Verma',
+    role: 'ANALYST',
+    roleLabel: 'L1 Compliance Analyst',
+    badgeId: 'AML-33012',
+    department: 'Transaction Monitoring Operations'
+  }
+];
 
 const RANDOM_ORIGINATORS = [
   "Aarav Malhotra", "Vikram Singhania", "Nexa Cloud Tech", "TechFab Solutions", 
@@ -74,6 +99,33 @@ export default function App() {
   const [resumeAction, setResumeAction] = useState('REJECTED');
   const [errorMessage, setErrorMessage] = useState('');
 
+  // Authentication & Officer Session State
+  const [selectedOfficer, setSelectedOfficer] = useState(DEMO_OFFICERS_LIST[0]);
+  const [authToken, setAuthToken] = useState('');
+  const [adjudicationError, setAdjudicationError] = useState('');
+
+  useEffect(() => {
+    async function authenticateOfficer() {
+      try {
+        const res = await fetch('/api/v1/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: selectedOfficer.username,
+            password: selectedOfficer.password
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setAuthToken(data.access_token);
+        }
+      } catch (err) {
+        console.error('Failed to authenticate officer session:', err);
+      }
+    }
+    authenticateOfficer();
+  }, [selectedOfficer]);
+
   const generateRandomSimulation = () => {
     const randomTxn = `TXN-${Math.floor(10000 + Math.random() * 90000)}`;
     const originator = RANDOM_ORIGINATORS[Math.floor(Math.random() * RANDOM_ORIGINATORS.length)];
@@ -121,9 +173,17 @@ export default function App() {
     };
 
     try {
+      const headers = { 
+        'Content-Type': 'application/json', 
+        'Accept': 'application/json' 
+      };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
       const res = await fetch('/api/v1/investigations/simulate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        headers: headers,
         body: JSON.stringify(payload),
       });
 
@@ -152,24 +212,40 @@ export default function App() {
   const handleResumeHITL = async () => {
     if (!caseData?.case_id) return;
     setLoading(true);
+    setAdjudicationError('');
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
       const res = await fetch(`/api/v1/investigations/${caseData.case_id}/resume`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify({ decision: resumeAction, notes: decisionNotes }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}: Adjudication resume rejected.`);
+      
+      if (!res.ok) {
+        let errorDetail = `HTTP ${res.status}`;
+        try {
+          const errData = await res.json();
+          errorDetail = errData.detail || JSON.stringify(errData);
+        } catch (_) {}
+        throw new Error(errorDetail);
+      }
+
       const updated = await res.json();
       setCaseData(prev => ({
         ...prev,
         status: updated.review_status,
         final_verdict: updated.final_verdict,
         execution_trace: updated.execution_trace,
+        adjudicated_by: updated.adjudicated_by,
         requires_human_review: false
       }));
       setHumanModalOpen(false);
     } catch (err) {
-      setErrorMessage(err.message);
+      setAdjudicationError(err.message || 'Adjudication resume failed');
     } finally {
       setLoading(false);
     }
@@ -225,8 +301,44 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 text-xs font-mono">
-          <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/80 border border-slate-800 text-slate-300">
+        <div className="flex items-center gap-3 text-xs">
+          {/* Officer Session Profile Card */}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 text-slate-300 shadow-inner">
+            <ShieldCheck className={`w-4 h-4 ${selectedOfficer.role === 'MLRO_OFFICER' ? 'text-emerald-400' : 'text-cyan-400'}`} />
+            <div className="text-left">
+              <div className="flex items-center gap-1.5">
+                <span className="font-semibold text-slate-200 text-xs">{selectedOfficer.fullName}</span>
+                <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold uppercase tracking-wider ${
+                  selectedOfficer.role === 'MLRO_OFFICER' 
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
+                    : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                }`}>
+                  {selectedOfficer.role === 'MLRO_OFFICER' ? 'MLRO' : 'ANALYST'}
+                </span>
+              </div>
+              <div className="text-[10px] text-slate-500 font-mono">
+                {selectedOfficer.badgeId} • {selectedOfficer.department}
+              </div>
+            </div>
+            
+            <select
+              value={selectedOfficer.username}
+              onChange={(e) => {
+                const found = DEMO_OFFICERS_LIST.find(o => o.username === e.target.value);
+                if (found) setSelectedOfficer(found);
+              }}
+              className="ml-2 bg-[#060912] border border-slate-700 text-slate-300 rounded-lg px-2 py-1 text-[11px] font-mono focus:outline-none focus:border-indigo-500 cursor-pointer hover:border-slate-600 transition"
+              title="Switch compliance officer identity for RBAC testing"
+            >
+              {DEMO_OFFICERS_LIST.map((officer) => (
+                <option key={officer.username} value={officer.username}>
+                  Switch: {officer.fullName} ({officer.role === 'MLRO_OFFICER' ? 'MLRO' : 'Analyst'})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/80 border border-slate-800 text-slate-300 font-mono">
             <Database className="w-3.5 h-3.5 text-indigo-400" />
             <span>Checkpointer:</span>
             <span className="text-emerald-400 font-bold">PostgreSQL pgvector</span>
@@ -730,15 +842,64 @@ export default function App() {
       {humanModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
           <div className="bg-[#0b1020] border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5">
-            <div className="flex items-center gap-3.5">
-              <div className="p-3 bg-amber-500/20 text-amber-400 rounded-xl">
-                <UserCheck className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-white">Compliance Officer Adjudication Sign-Off</h3>
-                <p className="text-xs text-slate-400 font-mono">Case ID: {caseData?.case_id}</p>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3.5">
+                <div className="p-3 bg-amber-500/20 text-amber-400 rounded-xl">
+                  <UserCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Compliance Officer Adjudication Sign-Off</h3>
+                  <p className="text-xs text-slate-400 font-mono">Case ID: {caseData?.case_id}</p>
+                </div>
               </div>
             </div>
+
+            {/* Officer RBAC Authentication Card */}
+            <div className={`p-3.5 rounded-xl border text-xs ${
+              selectedOfficer.role === 'MLRO_OFFICER'
+                ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-200'
+                : 'bg-amber-950/30 border-amber-500/40 text-amber-200'
+            }`}>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-2 font-semibold">
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Statutory Authority: {selectedOfficer.role}</span>
+                </div>
+                <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-black/40">
+                  {selectedOfficer.badgeId}
+                </span>
+              </div>
+              <p className="text-[11px] leading-relaxed opacity-90">
+                {selectedOfficer.role === 'MLRO_OFFICER'
+                  ? `Signed in as ${selectedOfficer.fullName}. Certified for statutory sign-off authority under PMLA 2002 Sec 12.`
+                  : `Signed in as ${selectedOfficer.fullName}. Note: Analysts lack statutory sign-off permission. Submitting will test 403 Forbidden enforcement.`
+                }
+              </p>
+              {selectedOfficer.role !== 'MLRO_OFFICER' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const mlro = DEMO_OFFICERS_LIST.find(o => o.role === 'MLRO_OFFICER');
+                    if (mlro) setSelectedOfficer(mlro);
+                    setAdjudicationError('');
+                  }}
+                  className="mt-2.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 font-mono text-[11px] cursor-pointer font-medium transition"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  <span>Switch to Priya Sharma (MLRO Officer)</span>
+                </button>
+              )}
+            </div>
+
+            {adjudicationError && (
+              <div className="p-3 bg-rose-500/20 border border-rose-500/40 rounded-xl text-xs text-rose-300 font-mono flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="block text-rose-200 font-semibold mb-0.5">RBAC Statutory Access Violation</strong>
+                  <span>{adjudicationError}</span>
+                </div>
+              </div>
+            )}
 
             <p className="text-xs text-slate-300 bg-[#060912] p-3.5 rounded-xl border border-slate-800 leading-relaxed">
               LangGraph suspended state via <code className="text-indigo-400 font-mono">interrupt()</code> because risk score reached <strong className="text-rose-400 font-mono">{riskPercent}%</strong> (Exceeded 70% threshold). Select your ruling to resume the state machine:
@@ -772,7 +933,10 @@ export default function App() {
 
             <div className="flex justify-end gap-3 pt-2">
               <button
-                onClick={() => setHumanModalOpen(false)}
+                onClick={() => {
+                  setHumanModalOpen(false);
+                  setAdjudicationError('');
+                }}
                 className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-slate-200 cursor-pointer font-medium"
               >
                 Cancel
@@ -780,10 +944,18 @@ export default function App() {
               <button
                 onClick={handleResumeHITL}
                 disabled={loading}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-5 py-2.5 rounded-xl text-xs transition cursor-pointer flex items-center gap-2 shadow-lg shadow-indigo-600/30"
+                className={`font-semibold px-5 py-2.5 rounded-xl text-xs transition cursor-pointer flex items-center gap-2 shadow-lg ${
+                  selectedOfficer.role === 'MLRO_OFFICER'
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30'
+                    : 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-600/30'
+                }`}
               >
                 {loading && <RefreshCw className="w-4 h-4 animate-spin" />}
-                <span>Submit Ruling & Resume Graph</span>
+                <span>
+                  {selectedOfficer.role === 'MLRO_OFFICER' 
+                    ? 'Submit Statutory Ruling & Resume Graph' 
+                    : 'Submit Ruling (Test Role Guard)'}
+                </span>
               </button>
             </div>
           </div>

@@ -1,9 +1,10 @@
 import uuid
 import traceback
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 from langgraph.types import Command
 from app.tools.compliance_tools import TransactionCreatePayload, register_custom_transaction
+from app.auth.security import require_role, UserPrincipal
 
 router = APIRouter(prefix="/api/v1/investigations", tags=["Investigations"])
 
@@ -96,7 +97,12 @@ async def trigger_investigation(req: InvestigationRequest, request: Request):
         raise HTTPException(status_code=500, detail=f"Investigation failed: {str(e)}")
 
 @router.post("/{case_id}/resume")
-async def resume_investigation(case_id: str, payload: AdjudicationRequest, request: Request):
+async def resume_investigation(
+    case_id: str, 
+    payload: AdjudicationRequest, 
+    request: Request,
+    current_user: UserPrincipal = Depends(require_role(["MLRO_OFFICER"]))
+):
     try:
         workflow = get_workflow(request)
         config = {"configurable": {"thread_id": case_id}}
@@ -106,12 +112,24 @@ async def resume_investigation(case_id: str, payload: AdjudicationRequest, reque
             config=config
         )
 
+        trace = list(resumed_state.get("execution_trace", []))
+        trace.append(f"Statutory HITL sign-off certified by {current_user.full_name} ({current_user.badge_id}, {current_user.department})")
+
         return {
             "case_id": case_id,
             "review_status": resumed_state.get("review_status"),
             "final_verdict": resumed_state.get("final_verdict"),
-            "execution_trace": resumed_state.get("execution_trace")
+            "execution_trace": trace,
+            "adjudicated_by": {
+                "name": current_user.full_name,
+                "role": current_user.role,
+                "badge_id": current_user.badge_id,
+                "department": current_user.department
+            }
         }
+    except HTTPException:
+        raise
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Adjudication resume failed: {str(e)}")
+
