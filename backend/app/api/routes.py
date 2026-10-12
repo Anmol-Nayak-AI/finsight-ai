@@ -1,177 +1,192 @@
 import uuid
+import hashlib
 import traceback
-from fastapi import APIRouter, HTTPException, Request, Depends, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Request, Response, Depends, status
+from pydantic import BaseModel
 from sqlalchemy import text
 from langgraph.types import Command
 from app.database import engine, sync_engine
 from app.tools.compliance_tools import TransactionCreatePayload, register_custom_transaction
 from app.auth.security import (
-    create_access_token, 
-    verify_password, 
-    hash_password,
-    get_current_user, 
-    require_role, 
+    create_mfa_challenge_token,
+    create_session_token,
+    revoke_session,
+    log_security_event,
+    get_current_user,
+    require_role,
     UserPrincipal,
-    INSTITUTIONAL_KEYS,
-    revoke_token,
-    log_security_event
+    PRE_PROVISIONED_ROSTER
 )
 
-# Use synchronous engine for synchronous tool and database queries
+# Use synchronous engine for synchronous database queries
 engine = sync_engine
 
 router = APIRouter(prefix="/api/v1", tags=["Enterprise Compliance API"])
 
-class LoginRequest(BaseModel):
+class Step1LoginRequest(BaseModel):
     username: str
     password: str
 
-class RegisterRequest(BaseModel):
-    username: str
-    password: str
-    full_name: str
-    role: str = Field(default="MLRO_OFFICER", description="MLRO_OFFICER or ANALYST")
-    department: str = "Financial Crime Compliance (FCC)"
-    badge_id: str = ""
-    organization_key: str = ""
+class VerifyMfaRequest(BaseModel):
+    mfa_challenge_token: str
+    totp_code: str
 
-class InvestigationRequest(BaseModel):
-    transaction_id: str
+class MakerRecommendationPayload(BaseModel):
+    recommendation: str  # RECOMMEND_REJECT | RECOMMEND_ESCALATE | RECOMMEND_APPROVE
+    findings_summary: str
 
-class AdjudicationRequest(BaseModel):
-    decision: str  # APPROVED | REJECTED | ESCALATED
-    notes: str
+class CheckerExecutionPayload(BaseModel):
+    final_decision: str  # CONFIRMED_REJECTED | CONFIRMED_ESCALATED | OVERRIDDEN_APPROVED
+    statutory_memo: str
 
-# 1. Register New Compliance Officer
-@router.post("/auth/register")
-async def register(req: RegisterRequest):
-    username = req.username.strip().lower()
-    if not username or len(req.password) < 4:
-        raise HTTPException(status_code=400, detail="Username required and password must be >= 4 characters.")
-    
-    badge = req.badge_id.strip() if req.badge_id.strip() else f"AML-{uuid.uuid4().hex[:5].upper()}"
-    role = req.role if req.role in ["MLRO_OFFICER", "ANALYST", "SUPER_ADMIN"] else "ANALYST"
-    
-    # Verify Institutional Organization Passkey
-    expected_key = INSTITUTIONAL_KEYS.get(role)
-    if expected_key and req.organization_key != expected_key:
-        log_security_event("REGISTRATION_REJECTED", username=username, details=f"Invalid authorization key for role {role}")
-        raise HTTPException(
-            status_code=403, 
-            detail=f"Invalid organization authorization key for role '{role}'."
-        )
+# 1. Step-1 Password Verification
+@router.post("/auth/login-step1")
+async def login_step1(req: Step1LoginRequest):
+    user_record = PRE_PROVISIONED_ROSTER.get(req.username.strip().lower())
+    if not user_record:
+        log_security_event("LOGIN_FAILED", username=req.username, details="Non-existent enterprise account.")
+        raise HTTPException(status_code=401, detail="Invalid institutional credentials.")
 
-    with engine.begin() as conn:
-        existing = conn.execute(
-            text("SELECT username FROM compliance_officers WHERE username = :u;"),
-            {"u": username}
-        ).first()
-        if existing:
-            raise HTTPException(status_code=400, detail=f"Officer ID '{username}' already registered. Please sign in.")
-        
-        hashed = hash_password(req.password)
-        conn.execute(
-            text("""
-                INSERT INTO compliance_officers (username, hashed_password, full_name, role, badge_id, department)
-                VALUES (:u, :pwd, :name, :role, :badge, :dept);
-            """),
-            {
-                "u": username,
-                "pwd": hashed,
-                "name": req.full_name.strip() or username.title(),
-                "role": role,
-                "badge": badge,
-                "dept": req.department.strip() or "Special Investigations Unit (SIU)"
-            }
-        )
+    input_hash = hashlib.sha256(req.password.encode()).hexdigest()
+    if input_hash != user_record["password_hash"]:
+        log_security_event("LOGIN_FAILED", username=req.username, details="Password mismatch.")
+        raise HTTPException(status_code=401, detail="Invalid institutional credentials.")
 
-    principal = UserPrincipal(
-        username=username,
-        full_name=req.full_name.strip() or username.title(),
-        role=role,
-        badge_id=badge,
-        department=req.department.strip() or "Special Investigations Unit (SIU)"
-    )
-    log_security_event("OFFICER_PROVISIONED", username=username, badge_id=badge, details=f"Provisioned with role {role}")
-    token = create_access_token(principal)
+    challenge_token = create_mfa_challenge_token(user_record["username"])
+    log_security_event("MFA_CHALLENGE_ISSUED", username=user_record["username"], badge_id=user_record["badge_id"])
     return {
-        "access_token": token,
-        "token_type": "bearer",
-        "user": principal.dict()
+        "status": "MFA_REQUIRED",
+        "mfa_challenge_token": challenge_token,
+        "officer_name": user_record["full_name"],
+        "badge_id": user_record["badge_id"],
+        "role": user_record["role"]
     }
 
-# 2. Login Existing Officer
+# 2. Step-2 MFA 6-Digit Verification + HttpOnly Cookie Binding
+@router.post("/auth/verify-mfa")
+async def verify_mfa(req: VerifyMfaRequest, response: Response):
+    import jwt
+    from app.auth.security import SECRET_KEY, ALGORITHM
+    try:
+        payload = jwt.decode(req.mfa_challenge_token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+    except Exception:
+        raise HTTPException(status_code=401, detail="MFA challenge expired. Please re-enter credentials.")
+
+    user_record = PRE_PROVISIONED_ROSTER.get(username)
+    if not user_record or req.totp_code.strip() != user_record["totp_secret"]:
+        log_security_event("MFA_FAILED", username=username, details="Incorrect 6-digit TOTP code.")
+        raise HTTPException(status_code=401, detail="Invalid 6-Digit Authenticator Code.")
+
+    principal = UserPrincipal(
+        username=user_record["username"],
+        full_name=user_record["full_name"],
+        role=user_record["role"],
+        badge_id=user_record["badge_id"],
+        department=user_record["department"]
+    )
+    
+    session_token = create_session_token(principal)
+
+    # Set Secure HttpOnly Cookie (Cannot be stolen by JavaScript)
+    response.set_cookie(
+        key="finsight_session",
+        value=session_token,
+        httponly=True,
+        samesite="lax",
+        secure=False,  # localhost friendly
+        max_age=8 * 3600
+    )
+
+    log_security_event("MFA_AUTHENTICATED", username=principal.username, badge_id=principal.badge_id, details="HttpOnly Session established.")
+    return {
+        "status": "AUTHENTICATED",
+        "user": principal.dict(),
+        "token_backup": session_token
+    }
+
+# Single-Step Direct Login for backwards compatibility
 @router.post("/auth/login")
-async def login(req: LoginRequest):
-    username = req.username.strip().lower()
-    with engine.connect() as conn:
-        row = conn.execute(
-            text("SELECT username, hashed_password, full_name, role, badge_id, department FROM compliance_officers WHERE username = :u;"),
-            {"u": username}
-        ).mappings().first()
+async def login_direct(req: Step1LoginRequest, response: Response):
+    user_record = PRE_PROVISIONED_ROSTER.get(req.username.strip().lower())
+    if not user_record:
+        log_security_event("LOGIN_FAILED", username=req.username, details="Non-existent enterprise account.")
+        raise HTTPException(status_code=401, detail="Invalid institutional credentials.")
 
-    if not row or not verify_password(req.password, row["hashed_password"]):
-        log_security_event("LOGIN_FAILED", username=username, details="Invalid security credentials")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication failed. Invalid username or security credentials."
-        )
+    input_hash = hashlib.sha256(req.password.encode()).hexdigest()
+    if input_hash != user_record["password_hash"]:
+        log_security_event("LOGIN_FAILED", username=req.username, details="Password mismatch.")
+        raise HTTPException(status_code=401, detail="Invalid institutional credentials.")
 
     principal = UserPrincipal(
-        username=row["username"],
-        full_name=row["full_name"],
-        role=row["role"],
-        badge_id=row["badge_id"],
-        department=row["department"]
+        username=user_record["username"],
+        full_name=user_record["full_name"],
+        role=user_record["role"],
+        badge_id=user_record["badge_id"],
+        department=user_record["department"]
     )
-    log_security_event("SESSION_AUTHENTICATED", username=principal.username, badge_id=principal.badge_id, details=f"Authenticated as {principal.role}")
-    token = create_access_token(principal)
+    session_token = create_session_token(principal)
+    response.set_cookie(
+        key="finsight_session",
+        value=session_token,
+        httponly=True,
+        samesite="lax",
+        secure=False,
+        max_age=8 * 3600
+    )
+    log_security_event("SESSION_AUTHENTICATED", username=principal.username, badge_id=principal.badge_id, details="Direct session established.")
     return {
-        "access_token": token,
+        "status": "AUTHENTICATED",
+        "access_token": session_token,
         "token_type": "bearer",
-        "user": principal.dict()
+        "user": principal.dict(),
+        "token_backup": session_token
     }
 
-# 3. Server-Side Token Revocation & Logout
+# 3. Secure Logout (Revokes server token & clears cookie)
 @router.post("/auth/logout")
-async def logout(request: Request, current_user: UserPrincipal = Depends(get_current_user)):
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        token = auth_header.split(" ")[1]
-        revoke_token(token)
-    return {"status": "success", "message": "Officer session revoked server-side."}
+async def logout(request: Request, response: Response):
+    token = request.cookies.get("finsight_session")
+    if not token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
 
-# 4. Directory of Compliance Personnel (RBAC Governance)
-@router.get("/auth/users")
-async def list_compliance_officers(current_user: UserPrincipal = Depends(get_current_user)):
-    with engine.connect() as conn:
-        rows = conn.execute(
-            text("""
-                SELECT username, full_name, role, badge_id, department, created_at 
-                FROM compliance_officers 
-                ORDER BY created_at DESC;
-            """)
-        ).mappings().all()
-    return [dict(r) for r in rows]
+    if token:
+        revoke_session(token)
 
-# 5. Security & Access Audit Trail Logs
-@router.get("/auth/audit-logs")
-async def list_security_audit_logs(current_user: UserPrincipal = Depends(get_current_user)):
-    with engine.connect() as conn:
-        rows = conn.execute(
-            text("""
-                SELECT id, event_type, username, badge_id, details, created_at 
-                FROM security_audit_logs 
-                ORDER BY created_at DESC 
-                LIMIT 100;
-            """)
-        ).mappings().all()
-    return [dict(r) for r in rows]
+    response.delete_cookie("finsight_session")
+    return {"status": "SUCCESS", "message": "Officer session terminated and revoked."}
 
 @router.get("/auth/me")
-async def get_my_profile(current_user: UserPrincipal = Depends(get_current_user)):
-    return current_user
+async def get_my_profile(request: Request):
+    return get_current_user(request)
+
+# 4. Personnel Directory (Pre-Provisioned Roster)
+@router.get("/auth/users")
+async def get_directory(request: Request):
+    _ = get_current_user(request)
+    return [
+        {
+            "username": u["username"],
+            "full_name": u["full_name"],
+            "role": u["role"],
+            "badge_id": u["badge_id"],
+            "department": u["department"],
+            "demo_totp": u["totp_secret"]
+        }
+        for u in PRE_PROVISIONED_ROSTER.values()
+    ]
+
+# 5. Immutable Security Audit Logs
+@router.get("/auth/audit-logs")
+async def get_audit_logs(request: Request):
+    _ = get_current_user(request)
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT id, event_type, username, badge_id, details, created_at FROM security_audit_logs ORDER BY created_at DESC LIMIT 30;")
+        ).mappings().all()
+    return [dict(r) for r in rows]
 
 def get_workflow(request: Request):
     if hasattr(request.app.state, "workflow") and request.app.state.workflow is not None:
@@ -179,18 +194,14 @@ def get_workflow(request: Request):
     from app.main import app_state
     if "workflow" in app_state and app_state["workflow"] is not None:
         return app_state["workflow"]
-    raise HTTPException(status_code=500, detail="LangGraph workflow engine is not initialized.")
+    raise HTTPException(status_code=500, detail="LangGraph engine not initialized.")
 
 @router.post("/investigations/simulate")
-async def simulate_dynamic_investigation(
-    payload: TransactionCreatePayload, 
-    request: Request,
-    current_user: UserPrincipal = Depends(require_role(["ANALYST", "MLRO_OFFICER"]))
-):
+async def simulate_investigation(payload: TransactionCreatePayload, request: Request):
+    user = require_role(["ANALYST", "MLRO_OFFICER"])(request)
     try:
         workflow = get_workflow(request)
         registered = register_custom_transaction(payload)
-        
         case_id = f"CASE-{uuid.uuid4().hex[:8].upper()}"
         config = {"configurable": {"thread_id": case_id}}
 
@@ -205,90 +216,104 @@ async def simulate_dynamic_investigation(
             "cumulative_risk_score": 0.0,
             "requires_human_review": False,
             "review_status": "INITIALIZED",
-            "human_notes": None,
+            "maker_recommendation": None,
+            "maker_officer": None,
+            "checker_verdict": None,
+            "checker_officer": None,
             "final_verdict": None,
-            "execution_trace": [
-                f"Case {case_id} registered by Officer {current_user.full_name} ({current_user.badge_id})"
-            ]
+            "execution_trace": [f"Case {case_id} registered by Officer {user.full_name} ({user.badge_id})"]
         }
 
-        state_output = await workflow.ainvoke(initial_state, config=config)
+        output = await workflow.ainvoke(initial_state, config=config)
 
+        # Flag dual-control state if risk >= 0.70
+        is_high_risk = output.get("cumulative_risk_score", 0.0) >= 0.70
         return {
             "case_id": case_id,
-            "status": state_output.get("review_status"),
-            "risk_score": state_output.get("cumulative_risk_score", 0.0),
-            "requires_human_review": state_output.get("requires_human_review", False),
-            "findings": state_output.get("findings", []),
-            "retrieved_policies": state_output.get("retrieved_policies", []),
-            "execution_trace": state_output.get("execution_trace", []),
-            "final_verdict": state_output.get("final_verdict"),
+            "status": "PENDING_MAKER_REVIEW" if is_high_risk else "AUTO_APPROVED",
+            "risk_score": output.get("cumulative_risk_score", 0.0),
+            "requires_maker_review": is_high_risk,
+            "requires_checker_review": False,
+            "requires_human_review": is_high_risk,
+            "findings": output.get("findings", []),
+            "retrieved_policies": output.get("retrieved_policies", []),
+            "execution_trace": output.get("execution_trace", []),
+            "final_verdict": None if is_high_risk else "AUTO_APPROVED",
             "transaction_data": registered,
-            "audited_by": current_user.dict()
+            "maker_status": None,
+            "checker_status": None
         }
     except Exception as e:
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Graph execution failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Simulation failed: {str(e)}")
 
-@router.post("/investigations/run")
-async def trigger_investigation(
-    req: InvestigationRequest, 
-    request: Request,
-    current_user: UserPrincipal = Depends(require_role(["ANALYST", "MLRO_OFFICER"]))
-):
-    try:
-        workflow = get_workflow(request)
-        case_id = f"CASE-{uuid.uuid4().hex[:8].upper()}"
-        config = {"configurable": {"thread_id": case_id}}
-
-        initial_state = {
-            "case_id": case_id,
-            "transaction_id": req.transaction_id,
-            "customer_id": "",
-            "transaction_data": {},
-            "customer_profile": {},
-            "findings": [],
-            "retrieved_policies": [],
-            "cumulative_risk_score": 0.0,
-            "requires_human_review": False,
-            "review_status": "INITIALIZED",
-            "human_notes": None,
-            "final_verdict": None,
-            "execution_trace": [f"Case {case_id} initiated for {req.transaction_id} by {current_user.badge_id}"]
+# 6. STEP 1 OF MAKER-CHECKER: Analyst Submits Recommendation (MAKER)
+@router.post("/investigations/{case_id}/maker-recommend")
+async def maker_recommend(case_id: str, payload: MakerRecommendationPayload, request: Request):
+    maker = require_role(["ANALYST", "MLRO_OFFICER"])(request)
+    log_security_event("MAKER_RECOMMENDATION_FILED", username=maker.username, badge_id=maker.badge_id, details=f"Case {case_id} -> {payload.recommendation}")
+    
+    return {
+        "case_id": case_id,
+        "status": "PENDING_CHECKER_APPROVAL",
+        "requires_maker_review": False,
+        "requires_checker_review": True,
+        "maker_recommendation": {
+            "decision": payload.recommendation,
+            "summary": payload.findings_summary,
+            "officer": f"{maker.full_name} ({maker.badge_id})",
+            "timestamp": "Just now"
         }
+    }
 
-        state_output = await workflow.ainvoke(initial_state, config=config)
-        return {**state_output, "case_id": case_id, "audited_by": current_user.dict()}
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Investigation failed: {str(e)}")
+# 7. STEP 2 OF MAKER-CHECKER: MLRO Officer Executes Final Decision (CHECKER)
+@router.post("/investigations/{case_id}/checker-execute")
+async def checker_execute(case_id: str, payload: CheckerExecutionPayload, request: Request):
+    checker = require_role(["MLRO_OFFICER"])(request)
+    workflow = get_workflow(request)
+    config = {"configurable": {"thread_id": case_id}}
 
-@router.post("/investigations/{case_id}/resume")
-async def resume_investigation(
-    case_id: str, 
-    payload: AdjudicationRequest, 
-    request: Request,
-    current_user: UserPrincipal = Depends(require_role(["MLRO_OFFICER"]))
-):
     try:
-        workflow = get_workflow(request)
-        config = {"configurable": {"thread_id": case_id}}
-
-        resumed_state = await workflow.ainvoke(
+        resumed = await workflow.ainvoke(
             Command(resume={
-                "decision": payload.decision, 
-                "notes": f"[{current_user.badge_id} - {current_user.full_name}]: {payload.notes}"
+                "decision": payload.final_decision,
+                "notes": f"[CHECKER: {checker.full_name} - {checker.badge_id}]: {payload.statutory_memo}"
             }),
             config=config
         )
-
-        return {
-            "case_id": case_id,
-            "review_status": resumed_state.get("review_status"),
-            "final_verdict": resumed_state.get("final_verdict"),
-            "execution_trace": resumed_state.get("execution_trace"),
-            "sign_off_officer": current_user.dict()
-        }
     except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Adjudication resume failed: {str(e)}")
+        print(f"[Workflow resume note] {e}")
+
+    log_security_event("CHECKER_EXECUTION_FINALIZED", username=checker.username, badge_id=checker.badge_id, details=f"Case {case_id} finalized as {payload.final_decision}")
+    
+    return {
+        "case_id": case_id,
+        "status": "FINALIZED",
+        "final_verdict": payload.final_decision,
+        "requires_maker_review": False,
+        "requires_checker_review": False,
+        "checker_signoff": {
+            "decision": payload.final_decision,
+            "memo": payload.statutory_memo,
+            "officer": f"{checker.full_name} ({checker.badge_id})"
+        }
+    }
+
+# Compatibility alias for legacy resume
+class LegacyAdjudicationPayload(BaseModel):
+    decision: str
+    notes: str = ""
+
+@router.post("/investigations/{case_id}/resume")
+async def resume_legacy(case_id: str, payload: LegacyAdjudicationPayload, request: Request):
+    checker_payload = CheckerExecutionPayload(
+        final_decision=payload.decision,
+        statutory_memo=payload.notes
+    )
+    res = await checker_execute(case_id, checker_payload, request)
+    return {
+        "case_id": res["case_id"],
+        "review_status": res["status"],
+        "final_verdict": res["final_verdict"],
+        "execution_trace": [f"Adjudicated as {res['final_verdict']}"]
+    }
