@@ -11,8 +11,7 @@ from app.graph.workflow import create_compliance_graph
 from app.models.entities import Base
 from app.models.rag_entities import RegulatoryDocumentChunk
 from app.database import engine
-from app.api.routes import router as investigations_router
-from app.api.auth import auth_router
+from app.api.routes import router as api_router
 
 load_dotenv()
 
@@ -80,8 +79,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(investigations_router)
-app.include_router(auth_router)
+app.include_router(api_router)
 
 @app.get("/health")
 async def health_check():
