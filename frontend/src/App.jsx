@@ -3,52 +3,30 @@ import {
   ShieldAlert, 
   CheckCircle2, 
   AlertTriangle, 
-  Clock, 
   FileText, 
   UserCheck, 
   BookOpen, 
   RefreshCw, 
   TrendingUp, 
   Sliders, 
-  Send,
-  Building2,
-  CreditCard,
-  User,
-  Shield,
-  Fingerprint,
-  Terminal,
-  Activity,
-  Download,
-  Database,
-  FileCheck,
-  Scale,
+  Send, 
+  Building2, 
+  CreditCard, 
+  User, 
+  Shield, 
+  Fingerprint, 
+  Terminal, 
+  Activity, 
+  Download, 
+  Database, 
+  FileCheck, 
+  Scale, 
   Dices,
   Lock,
-  KeyRound,
-  ShieldCheck,
-  UserX
+  LogOut,
+  BadgeCheck,
+  UserCheck2
 } from 'lucide-react';
-
-const DEMO_OFFICERS_LIST = [
-  {
-    username: 'officer.sharma',
-    password: 'Compliance@2026',
-    fullName: 'Priya Sharma (CAMS)',
-    role: 'MLRO_OFFICER',
-    roleLabel: 'MLRO Officer (Statutory Authority)',
-    badgeId: 'AML-88219',
-    department: 'Special Investigations Unit (SIU)'
-  },
-  {
-    username: 'analyst.verma',
-    password: 'Analyst@2026',
-    fullName: 'Rohan Verma',
-    role: 'ANALYST',
-    roleLabel: 'L1 Compliance Analyst',
-    badgeId: 'AML-33012',
-    department: 'Transaction Monitoring Operations'
-  }
-];
 
 const RANDOM_ORIGINATORS = [
   "Aarav Malhotra", "Vikram Singhania", "Nexa Cloud Tech", "TechFab Solutions", 
@@ -56,32 +34,29 @@ const RANDOM_ORIGINATORS = [
 ];
 
 const RANDOM_BENEFICIARIES = [
-  { name: "Apex Shell Logistics Ltd", isNew: true, riskKeyword: true },
-  { name: "Panama Horizon Trust", isNew: true, riskKeyword: true },
-  { name: "KoinX BVI Crypto Exchange", isNew: true, riskKeyword: true },
-  { name: "Kiran Global Hardware", isNew: false, riskKeyword: false },
-  { name: "Zepto Retail Store", isNew: false, riskKeyword: false },
-  { name: "Bosch Auto Systems Pvt", isNew: false, riskKeyword: false },
-  { name: "ByteCraft Infotech LLP", isNew: true, riskKeyword: false },
-  { name: "Al-Miraj Holdings Dubai", isNew: true, riskKeyword: true }
-];
-
-const RANDOM_NARRATIONS = [
-  "Consulting Retainer Settlement",
-  "Overseas Equipment Commission",
-  "Server Infrastructure Retainer",
-  "Virtual digital asset trade settlement",
-  "Annual performance bonus FY26",
-  "Cloud server billing tranche 2",
-  "Property token advance payment",
-  "Household Provisions"
+  { name: "Panama Horizon Shell Corp", isNew: true },
+  { name: "KoinX BVI Crypto Exchange", isNew: true },
+  { name: "Kiran Global Hardware", isNew: false },
+  { name: "Zepto Retail Store", isNew: false },
+  { name: "Al-Miraj Holdings Dubai", isNew: true },
+  { name: "ByteCraft Infotech LLP", isNew: true }
 ];
 
 const CHANNELS = ["IMPS", "NEFT", "RTGS", "UPI", "SWIFT"];
 
 export default function App() {
+  const [authToken, setAuthToken] = useState(localStorage.getItem('finsight_token') || '');
+  const [currentUser, setCurrentUser] = useState(JSON.parse(localStorage.getItem('finsight_user') || 'null'));
+  
+  // Auth Form State
+  const [usernameInput, setUsernameInput] = useState('officer.sharma');
+  const [passwordInput, setPasswordInput] = useState('Compliance@2026');
+  const [authError, setAuthError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+
+  // App Workspace State
   const [formData, setFormData] = useState({
-    transaction_id: 'TXN-92831',
+    transaction_id: 'TXN-1002491',
     customer_name: 'Aarav Malhotra',
     amount: 850000,
     historical_avg: 45000,
@@ -99,48 +74,56 @@ export default function App() {
   const [resumeAction, setResumeAction] = useState('REJECTED');
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Authentication & Officer Session State
-  const [selectedOfficer, setSelectedOfficer] = useState(DEMO_OFFICERS_LIST[0]);
-  const [authToken, setAuthToken] = useState('');
-  const [adjudicationError, setAdjudicationError] = useState('');
+  const handleLogin = async (overrideUser, overridePass) => {
+    setAuthLoading(true);
+    setAuthError('');
+    const u = overrideUser || usernameInput;
+    const p = overridePass || passwordInput;
 
-  useEffect(() => {
-    async function authenticateOfficer() {
-      try {
-        const res = await fetch('/api/v1/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: selectedOfficer.username,
-            password: selectedOfficer.password
-          })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setAuthToken(data.access_token);
-        }
-      } catch (err) {
-        console.error('Failed to authenticate officer session:', err);
+    try {
+      const res = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: u, password: p }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Authentication failed');
       }
+
+      const data = await res.json();
+      setAuthToken(data.access_token);
+      setCurrentUser(data.user);
+      localStorage.setItem('finsight_token', data.access_token);
+      localStorage.setItem('finsight_user', JSON.stringify(data.user));
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
+      setAuthLoading(false);
     }
-    authenticateOfficer();
-  }, [selectedOfficer]);
+  };
+
+  const handleLogout = () => {
+    setAuthToken('');
+    setCurrentUser(null);
+    localStorage.removeItem('finsight_token');
+    localStorage.removeItem('finsight_user');
+  };
 
   const generateRandomSimulation = () => {
-    const randomTxn = `TXN-${Math.floor(10000 + Math.random() * 90000)}`;
+    const randomTxn = `TXN-${Math.floor(1000000 + Math.random() * 900000)}`;
     const originator = RANDOM_ORIGINATORS[Math.floor(Math.random() * RANDOM_ORIGINATORS.length)];
     const beneficiaryObj = RANDOM_BENEFICIARIES[Math.floor(Math.random() * RANDOM_BENEFICIARIES.length)];
     const channel = CHANNELS[Math.floor(Math.random() * CHANNELS.length)];
-    const narration = RANDOM_NARRATIONS[Math.floor(Math.random() * RANDOM_NARRATIONS.length)];
-    
-    // Generate organic amounts from ₹2,500 to ₹24,00,000
+
     const isHighValue = Math.random() > 0.4;
     const amount = isHighValue 
-      ? Math.floor(250000 + Math.random() * 2000000)
+      ? Math.floor(300000 + Math.random() * 2000000)
       : Math.floor(1500 + Math.random() * 45000);
       
     const baseline = isHighValue && Math.random() > 0.5
-      ? Math.floor(15000 + Math.random() * 50000) // High velocity spike
+      ? Math.floor(15000 + Math.random() * 50000)
       : Math.floor(40000 + Math.random() * 200000);
 
     setFormData({
@@ -151,14 +134,14 @@ export default function App() {
       channel: channel,
       beneficiary_name: beneficiaryObj.name,
       beneficiary_is_new: beneficiaryObj.isNew,
-      narration: narration
+      narration: "Commercial Retainer Settlement"
     });
   };
 
   const handleSimulate = async () => {
     setLoading(true);
     setErrorMessage('');
-    
+
     const payload = {
       transaction_id: String(formData.transaction_id || `TXN-${Date.now()}`),
       customer_id: 'CUST-44021',
@@ -173,36 +156,28 @@ export default function App() {
     };
 
     try {
-      const headers = { 
-        'Content-Type': 'application/json', 
-        'Accept': 'application/json' 
-      };
-      if (authToken) {
-        headers['Authorization'] = `Bearer ${authToken}`;
-      }
-
       const res = await fetch('/api/v1/investigations/simulate', {
         method: 'POST',
-        headers: headers,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
         body: JSON.stringify(payload),
       });
 
+      if (res.status === 401) {
+        handleLogout();
+        throw new Error("Session expired. Please log in again.");
+      }
+
       if (!res.ok) {
-        let errorDetail = `HTTP ${res.status}`;
-        try {
-          const errData = await res.json();
-          errorDetail = errData.detail || JSON.stringify(errData);
-        } catch (_) {
-          const text = await res.text();
-          if (text) errorDetail += `: ${text}`;
-        }
-        throw new Error(errorDetail);
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP ${res.status}`);
       }
 
       const data = await res.json();
       setCaseData(data);
     } catch (err) {
-      console.error("Simulation error:", err);
       setErrorMessage(err.message || 'Audit failed');
     } finally {
       setLoading(false);
@@ -212,26 +187,19 @@ export default function App() {
   const handleResumeHITL = async () => {
     if (!caseData?.case_id) return;
     setLoading(true);
-    setAdjudicationError('');
     try {
-      const headers = { 'Content-Type': 'application/json' };
-      if (authToken) {
-        headers['Authorization'] = `Bearer ${authToken}`;
-      }
-
       const res = await fetch(`/api/v1/investigations/${caseData.case_id}/resume`, {
         method: 'POST',
-        headers: headers,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
         body: JSON.stringify({ decision: resumeAction, notes: decisionNotes }),
       });
-      
+
       if (!res.ok) {
-        let errorDetail = `HTTP ${res.status}`;
-        try {
-          const errData = await res.json();
-          errorDetail = errData.detail || JSON.stringify(errData);
-        } catch (_) {}
-        throw new Error(errorDetail);
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Adjudication failed: HTTP ${res.status}`);
       }
 
       const updated = await res.json();
@@ -240,12 +208,11 @@ export default function App() {
         status: updated.review_status,
         final_verdict: updated.final_verdict,
         execution_trace: updated.execution_trace,
-        adjudicated_by: updated.adjudicated_by,
         requires_human_review: false
       }));
       setHumanModalOpen(false);
     } catch (err) {
-      setAdjudicationError(err.message || 'Adjudication resume failed');
+      setErrorMessage(err.message);
     } finally {
       setLoading(false);
     }
@@ -267,22 +234,89 @@ export default function App() {
   const riskPercent = caseData ? Math.round((caseData.risk_score || 0) * 100) : null;
   const isManuallyAdjudicated = caseData?.final_verdict?.startsWith('MANUAL_');
 
-  const getAnomalyBadge = () => {
-    if (formData.amount >= 500000 || parseFloat(velocityRatio) > 10) {
-      return { label: 'CRITICAL ANOMALY', color: 'bg-rose-500/20 text-rose-300 border-rose-500/40' };
-    }
-    if (formData.amount >= 200000 || formData.beneficiary_is_new || parseFloat(velocityRatio) >= 1.5) {
-      return { label: 'MODERATE ANOMALY', color: 'bg-amber-500/20 text-amber-300 border-amber-500/40' };
-    }
-    return { label: 'LOW ANOMALY', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' };
-  };
+  // If Not Authenticated, Display Enterprise Login Portal
+  if (!authToken || !currentUser) {
+    return (
+      <div className="min-h-screen bg-[#06080f] text-slate-100 flex items-center justify-center p-4 selection:bg-indigo-500/30">
+        <div className="max-w-md w-full bg-[#0b1020] border border-slate-800 rounded-2xl p-8 shadow-2xl space-y-6">
+          <div className="flex items-center gap-3 border-b border-slate-800 pb-5">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 p-[1px] shadow-lg shadow-indigo-500/20">
+              <div className="h-full w-full bg-[#090d18] rounded-[11px] flex items-center justify-center">
+                <Shield className="w-5 h-5 text-indigo-400" />
+              </div>
+            </div>
+            <div>
+              <h2 className="text-sm font-bold tracking-wider text-white uppercase font-mono">FINSIGHT INTELLIGENCE</h2>
+              <p className="text-[11px] text-slate-400">Restricted Banking Compliance Terminal</p>
+            </div>
+          </div>
 
-  const anomalyBadge = getAnomalyBadge();
+          <div className="space-y-4 text-xs">
+            <div>
+              <label className="text-slate-400 font-medium block mb-1.5">Officer Username</label>
+              <input
+                type="text"
+                value={usernameInput}
+                onChange={(e) => setUsernameInput(e.target.value)}
+                className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-slate-400 font-medium block mb-1.5">Password</label>
+              <input
+                type="password"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            {authError && (
+              <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono">
+                {authError}
+              </div>
+            )}
+
+            <button
+              onClick={() => handleLogin()}
+              disabled={authLoading}
+              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 rounded-xl transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/30"
+            >
+              {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
+              <span>Authenticate Session (JWT)</span>
+            </button>
+          </div>
+
+          {/* Quick Demo Credentials */}
+          <div className="pt-4 border-t border-slate-800/80 space-y-2 text-xs">
+            <span className="text-[11px] text-slate-500 font-mono block">One-Click Security Credentials:</span>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => handleLogin('officer.sharma', 'Compliance@2026')}
+                className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-left text-[11px] text-slate-300 transition"
+              >
+                <div className="font-bold text-cyan-400">Officer Sharma</div>
+                <div className="text-[10px] text-slate-500">Role: MLRO_OFFICER</div>
+              </button>
+              <button
+                onClick={() => handleLogin('analyst.verma', 'Analyst@2026')}
+                className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-left text-[11px] text-slate-300 transition"
+              >
+                <div className="font-bold text-indigo-400">Analyst Verma</div>
+                <div className="text-[10px] text-slate-500">Role: ANALYST</div>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#06080f] text-slate-100 flex flex-col font-sans antialiased selection:bg-indigo-500/30">
       
-      {/* 1. Header */}
+      {/* 1. Global Navigation Bar with Authenticated Officer Telemetry */}
       <header className="border-b border-slate-800/80 bg-[#090d18]/90 backdrop-blur-md px-6 py-3 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 p-[1px] shadow-lg shadow-indigo-500/20">
@@ -294,65 +328,34 @@ export default function App() {
             <div className="flex items-center gap-2">
               <h1 className="text-sm font-bold tracking-wider text-white uppercase font-mono">FINSIGHT INTELLIGENCE</h1>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-semibold">
-                DYNAMIC AML ENGINE
+                SCALE: 1,000,000 ROWS
               </span>
             </div>
             <p className="text-[11px] text-slate-400">Autonomous Regulatory Compliance & Suspicious Activity Decisioning</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 text-xs">
-          {/* Officer Session Profile Card */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 text-slate-300 shadow-inner">
-            <ShieldCheck className={`w-4 h-4 ${selectedOfficer.role === 'MLRO_OFFICER' ? 'text-emerald-400' : 'text-cyan-400'}`} />
-            <div className="text-left">
-              <div className="flex items-center gap-1.5">
-                <span className="font-semibold text-slate-200 text-xs">{selectedOfficer.fullName}</span>
-                <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold uppercase tracking-wider ${
-                  selectedOfficer.role === 'MLRO_OFFICER' 
-                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
-                    : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                }`}>
-                  {selectedOfficer.role === 'MLRO_OFFICER' ? 'MLRO' : 'ANALYST'}
-                </span>
-              </div>
-              <div className="text-[10px] text-slate-500 font-mono">
-                {selectedOfficer.badgeId} • {selectedOfficer.department}
-              </div>
-            </div>
-            
-            <select
-              value={selectedOfficer.username}
-              onChange={(e) => {
-                const found = DEMO_OFFICERS_LIST.find(o => o.username === e.target.value);
-                if (found) setSelectedOfficer(found);
-              }}
-              className="ml-2 bg-[#060912] border border-slate-700 text-slate-300 rounded-lg px-2 py-1 text-[11px] font-mono focus:outline-none focus:border-indigo-500 cursor-pointer hover:border-slate-600 transition"
-              title="Switch compliance officer identity for RBAC testing"
-            >
-              {DEMO_OFFICERS_LIST.map((officer) => (
-                <option key={officer.username} value={officer.username}>
-                  Switch: {officer.fullName} ({officer.role === 'MLRO_OFFICER' ? 'MLRO' : 'Analyst'})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/80 border border-slate-800 text-slate-300 font-mono">
+        {/* Global Officer Session Badge */}
+        <div className="flex items-center gap-4 text-xs font-mono">
+          <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/80 border border-slate-800 text-slate-300">
             <Database className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Checkpointer:</span>
-            <span className="text-emerald-400 font-bold">PostgreSQL pgvector</span>
+            <span>Partitioned Table:</span>
+            <span className="text-emerald-400 font-bold">1,000,000 Records</span>
           </div>
 
-          {caseData && (
-            <button
-              onClick={downloadAuditReport}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 transition text-xs font-sans cursor-pointer font-medium"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Export SAR Dossier</span>
-            </button>
-          )}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-indigo-300">
+            <BadgeCheck className="w-4 h-4 text-indigo-400" />
+            <span>{currentUser.full_name}</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-600/30 font-bold uppercase">{currentUser.role}</span>
+          </div>
+
+          <button
+            onClick={handleLogout}
+            title="Terminate JWT Session"
+            className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-rose-400 transition cursor-pointer"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </header>
 
@@ -365,21 +368,18 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
                 <Sliders className="w-4 h-4 text-indigo-400" />
-                <span>Arbitrary Dynamic Transaction Synthesizer</span>
+                <span>Dynamic Transaction Synthesizer (Linked to 1M Ledger)</span>
               </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">Type any custom customer name, amount, or narration, or click Randomize to synthesize real scenarios.</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Audit any transaction ID from the 1M partition table or inject unconstrained parameters.</p>
             </div>
 
-            {/* Randomize Button */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={generateRandomSimulation}
-                className="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-indigo-600/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-600/30 transition cursor-pointer flex items-center gap-2 font-mono shadow-sm"
-              >
-                <Dices className="w-4 h-4 text-indigo-400" />
-                <span>Randomize Dynamic Scenario</span>
-              </button>
-            </div>
+            <button
+              onClick={generateRandomSimulation}
+              className="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-indigo-600/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-600/30 transition cursor-pointer flex items-center gap-2 font-mono shadow-sm"
+            >
+              <Dices className="w-4 h-4 text-indigo-400" />
+              <span>Synthesize Dynamic Record</span>
+            </button>
           </div>
 
           {/* Form Fields Grid */}
@@ -440,8 +440,8 @@ export default function App() {
                   <span className={`w-2 h-2 rounded-full ${formData.beneficiary_is_new ? 'bg-amber-400' : 'bg-emerald-400'}`} />
                   <span>{formData.beneficiary_is_new ? "First-Time Beneficiary" : "Historical Established Linkage"}</span>
                 </div>
-                <span className={`text-[10px] px-2 py-0.5 rounded font-mono uppercase border ${anomalyBadge.color}`}>
-                  {anomalyBadge.label}
+                <span className="text-[10px] px-2 py-0.5 rounded font-mono uppercase bg-black/40">
+                  {formData.beneficiary_is_new ? "EDD Trigger" : "Standard"}
                 </span>
               </button>
             </div>
@@ -470,7 +470,7 @@ export default function App() {
                 <span className="text-slate-400 font-medium">30-Day Historical Average Baseline</span>
                 <span className="font-mono text-slate-300 font-semibold text-xs">
                   ₹{Number(formData.historical_avg).toLocaleString('en-IN')}{" "}
-                  <span className={`font-mono font-bold px-2 py-0.5 rounded ml-2 ${Number(velocityRatio) > 10 ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : (Number(velocityRatio) >= 1.5 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-slate-800 text-slate-400')}`}>
+                  <span className="font-mono font-bold px-2 py-0.5 rounded ml-2 bg-slate-800 text-slate-400">
                     {velocityRatio}x Spike Factor
                   </span>
                 </span>
@@ -528,10 +528,10 @@ export default function App() {
                   </div>
                   <div>
                     <h4 className="text-sm font-bold tracking-wide text-amber-300">
-                      LANGGRAPH WORKFLOW INTERRUPTED — HITL REVIEW MANDATORY
+                      LANGGRAPH WORKFLOW SUSPENDED — HUMAN AUDIT MANDATORY
                     </h4>
                     <p className="text-xs text-amber-200/80 font-mono mt-0.5">
-                      Case: <span className="font-bold">{caseData.case_id}</span> &bull; Risk: <span className="font-bold">{riskPercent}%</span> &bull; Suspended via <code className="text-amber-300 bg-amber-950/60 px-1 py-0.5 rounded">interrupt()</code>
+                      Case: <span className="font-bold">{caseData.case_id}</span> &bull; Risk: <span className="font-bold">{riskPercent}%</span> &bull; Checkpoint Thread: <span className="font-bold">Persisted in PostgreSQL</span>
                     </p>
                   </div>
                 </div>
@@ -560,7 +560,7 @@ export default function App() {
                       </span>
                     </div>
                     <p className="text-xs text-indigo-200/80 font-mono mt-0.5">
-                      Case: <span className="font-bold">{caseData.case_id}</span> &bull; Status: <span className="font-bold">{caseData.status}</span> &bull; Checkpoint Thread: <span className="font-bold">Finalized</span>
+                      Case: <span className="font-bold">{caseData.case_id}</span> &bull; Status: <span className="font-bold">{caseData.status}</span> &bull; Audited by Officer: <span className="font-bold">{currentUser.badge_id}</span>
                     </p>
                   </div>
                 </div>
@@ -574,32 +574,22 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <div className={`p-4 rounded-2xl border flex items-center justify-between shadow-lg ${
-                riskPercent >= 35 
-                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-200 shadow-amber-500/5'
-                  : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200 shadow-emerald-500/5'
-              }`}>
+              <div className="p-4 rounded-2xl border bg-emerald-500/10 border-emerald-500/30 text-emerald-200 flex items-center justify-between shadow-lg shadow-emerald-500/5">
                 <div className="flex items-center gap-3.5">
-                  <div className={`p-2.5 rounded-xl ${riskPercent >= 35 ? 'bg-amber-500/20 text-amber-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
+                  <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400">
                     <CheckCircle2 className="w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className={`text-sm font-bold tracking-wide ${riskPercent >= 35 ? 'text-amber-300' : 'text-emerald-300'}`}>
-                      {riskPercent >= 35 
-                        ? "TRANSACTION MONITORED & APPROVED (MODERATE COMMERCIAL PROFILE)"
-                        : "TRANSACTION CLEARED BY AUTONOMOUS POLICY ENGINE"}
+                    <h4 className="text-sm font-bold tracking-wide text-emerald-300">
+                      TRANSACTION CLEARED BY AUTONOMOUS POLICY ENGINE
                     </h4>
                     <p className="text-xs opacity-80 font-mono mt-0.5">
-                      Case: <span className="font-bold">{caseData.case_id}</span> &bull; Risk Score: <span className="font-bold">{riskPercent}%</span> &bull; Below 70% threshold &bull; Core Ledger: Cleared
+                      Case: <span className="font-bold">{caseData.case_id}</span> &bull; Risk Score: <span className="font-bold">{riskPercent}%</span> &bull; Below 70% threshold &bull; Status: Cleared
                     </p>
                   </div>
                 </div>
-                <span className={`text-xs font-mono px-3 py-1.5 rounded-xl font-bold border ${
-                  riskPercent >= 35 
-                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' 
-                    : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                }`}>
-                  {caseData.final_verdict || 'AUTO_APPROVED'}
+                <span className="text-xs font-mono px-3 py-1.5 rounded-xl font-bold border bg-emerald-500/20 text-emerald-300 border-emerald-500/30">
+                  AUTO_APPROVED
                 </span>
               </div>
             )}
@@ -660,7 +650,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Active DAG Nodes */}
             <div className="bg-[#0b1020] border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -690,7 +679,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Right Column: Tabbed Evidence Deck */}
           <div className="col-span-12 lg:col-span-8 bg-[#0b1020] border border-slate-800 rounded-2xl shadow-xl flex flex-col overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-800 px-6 pt-3 bg-[#080d18]">
               <div className="flex gap-2">
@@ -736,7 +724,7 @@ export default function App() {
                             <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded uppercase ${
                               f.risk_level === 'HIGH' 
                                 ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' 
-                                : (f.risk_level === 'MEDIUM' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30')
+                                : 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
                             }`}>
                               {f.risk_level} SEVERITY
                             </span>
@@ -842,67 +830,18 @@ export default function App() {
       {humanModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
           <div className="bg-[#0b1020] border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3.5">
-                <div className="p-3 bg-amber-500/20 text-amber-400 rounded-xl">
-                  <UserCheck className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">Compliance Officer Adjudication Sign-Off</h3>
-                  <p className="text-xs text-slate-400 font-mono">Case ID: {caseData?.case_id}</p>
-                </div>
+            <div className="flex items-center gap-3.5">
+              <div className="p-3 bg-amber-500/20 text-amber-400 rounded-xl">
+                <UserCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Compliance Officer Adjudication Sign-Off</h3>
+                <p className="text-xs text-slate-400 font-mono">Case ID: {caseData?.case_id} &bull; Officer: {currentUser.badge_id}</p>
               </div>
             </div>
-
-            {/* Officer RBAC Authentication Card */}
-            <div className={`p-3.5 rounded-xl border text-xs ${
-              selectedOfficer.role === 'MLRO_OFFICER'
-                ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-200'
-                : 'bg-amber-950/30 border-amber-500/40 text-amber-200'
-            }`}>
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-2 font-semibold">
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>Statutory Authority: {selectedOfficer.role}</span>
-                </div>
-                <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-black/40">
-                  {selectedOfficer.badgeId}
-                </span>
-              </div>
-              <p className="text-[11px] leading-relaxed opacity-90">
-                {selectedOfficer.role === 'MLRO_OFFICER'
-                  ? `Signed in as ${selectedOfficer.fullName}. Certified for statutory sign-off authority under PMLA 2002 Sec 12.`
-                  : `Signed in as ${selectedOfficer.fullName}. Note: Analysts lack statutory sign-off permission. Submitting will test 403 Forbidden enforcement.`
-                }
-              </p>
-              {selectedOfficer.role !== 'MLRO_OFFICER' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const mlro = DEMO_OFFICERS_LIST.find(o => o.role === 'MLRO_OFFICER');
-                    if (mlro) setSelectedOfficer(mlro);
-                    setAdjudicationError('');
-                  }}
-                  className="mt-2.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 font-mono text-[11px] cursor-pointer font-medium transition"
-                >
-                  <KeyRound className="w-3.5 h-3.5" />
-                  <span>Switch to Priya Sharma (MLRO Officer)</span>
-                </button>
-              )}
-            </div>
-
-            {adjudicationError && (
-              <div className="p-3 bg-rose-500/20 border border-rose-500/40 rounded-xl text-xs text-rose-300 font-mono flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                <div>
-                  <strong className="block text-rose-200 font-semibold mb-0.5">RBAC Statutory Access Violation</strong>
-                  <span>{adjudicationError}</span>
-                </div>
-              </div>
-            )}
 
             <p className="text-xs text-slate-300 bg-[#060912] p-3.5 rounded-xl border border-slate-800 leading-relaxed">
-              LangGraph suspended state via <code className="text-indigo-400 font-mono">interrupt()</code> because risk score reached <strong className="text-rose-400 font-mono">{riskPercent}%</strong> (Exceeded 70% threshold). Select your ruling to resume the state machine:
+              LangGraph suspended state via <code className="text-indigo-400 font-mono">interrupt()</code> because risk score reached <strong className="text-rose-400 font-mono">{riskPercent}%</strong>. As an authorized <strong className="text-cyan-400">{currentUser.role}</strong>, select the formal statutory ruling:
             </p>
 
             <div className="space-y-3.5 text-xs">
@@ -933,10 +872,7 @@ export default function App() {
 
             <div className="flex justify-end gap-3 pt-2">
               <button
-                onClick={() => {
-                  setHumanModalOpen(false);
-                  setAdjudicationError('');
-                }}
+                onClick={() => setHumanModalOpen(false)}
                 className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-slate-200 cursor-pointer font-medium"
               >
                 Cancel
@@ -944,18 +880,10 @@ export default function App() {
               <button
                 onClick={handleResumeHITL}
                 disabled={loading}
-                className={`font-semibold px-5 py-2.5 rounded-xl text-xs transition cursor-pointer flex items-center gap-2 shadow-lg ${
-                  selectedOfficer.role === 'MLRO_OFFICER'
-                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30'
-                    : 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-600/30'
-                }`}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-5 py-2.5 rounded-xl text-xs transition cursor-pointer flex items-center gap-2 shadow-lg shadow-indigo-600/30"
               >
                 {loading && <RefreshCw className="w-4 h-4 animate-spin" />}
-                <span>
-                  {selectedOfficer.role === 'MLRO_OFFICER' 
-                    ? 'Submit Statutory Ruling & Resume Graph' 
-                    : 'Submit Ruling (Test Role Guard)'}
-                </span>
+                <span>Submit Ruling & Resume Graph</span>
               </button>
             </div>
           </div>
