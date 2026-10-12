@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ShieldAlert, 
   CheckCircle2, 
@@ -20,12 +20,19 @@ import {
   Database, 
   FileCheck, 
   Scale, 
-  Dices, 
-  Lock, 
-  LogOut, 
-  BadgeCheck, 
-  UserPlus, 
-  LogIn 
+  Dices,
+  Lock,
+  LogOut,
+  BadgeCheck,
+  UserPlus,
+  LogIn,
+  Users,
+  KeyRound,
+  ShieldCheck,
+  Fingerprint,
+  ChevronRight,
+  X,
+  Clock
 } from 'lucide-react';
 
 const RANDOM_ORIGINATORS = [
@@ -48,23 +55,27 @@ export default function App() {
   const [authToken, setAuthToken] = useState(localStorage.getItem('finsight_token') || '');
   const [currentUser, setCurrentUser] = useState(JSON.parse(localStorage.getItem('finsight_user') || 'null'));
   
-  // Auth Mode: 'LOGIN' or 'REGISTER'
-  const [authMode, setAuthMode] = useState('LOGIN');
+  // Auth Form State
+  const [authMode, setAuthMode] = useState('LOGIN'); // 'LOGIN' | 'REGISTER'
   const [loginUsername, setLoginUsername] = useState('officer.sharma');
   const [loginPassword, setLoginPassword] = useState('Compliance@2026');
 
-  // Register Fields
+  // Registration Form State
   const [regFullName, setRegFullName] = useState('');
   const [regUsername, setRegUsername] = useState('');
   const [regPassword, setRegPassword] = useState('');
-  const [regRole, setRegRole] = useState('MLRO_OFFICER');
+  const [regRole, setRegRole] = useState('MLRO_OFFICER'); // 'MLRO_OFFICER' | 'ANALYST'
   const [regDepartment, setRegDepartment] = useState('Special Investigations Unit (SIU)');
 
   const [authError, setAuthError] = useState('');
-  const [authSuccess, setAuthSuccess] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
-  // Workspace State
+  // Officer Directory Modal
+  const [directoryModalOpen, setDirectoryModalOpen] = useState(false);
+  const [officerList, setOfficerList] = useState([]);
+  const [loadingDirectory, setLoadingDirectory] = useState(false);
+
+  // App Workspace State
   const [formData, setFormData] = useState({
     transaction_id: 'TXN-1002491',
     customer_name: 'Aarav Malhotra',
@@ -88,7 +99,6 @@ export default function App() {
   const handleLogin = async (overrideUser, overridePass) => {
     setAuthLoading(true);
     setAuthError('');
-    setAuthSuccess('');
     const u = overrideUser !== undefined ? overrideUser : loginUsername;
     const p = overridePass !== undefined ? overridePass : loginPassword;
 
@@ -101,7 +111,7 @@ export default function App() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'Authentication failed');
+        throw new Error(err.detail || 'Authentication failed. Please verify credentials.');
       }
 
       const data = await res.json();
@@ -116,15 +126,14 @@ export default function App() {
     }
   };
 
-  // Handle Register
+  // Handle Registration
   const handleRegister = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     setAuthLoading(true);
     setAuthError('');
-    setAuthSuccess('');
 
     if (!regUsername || !regPassword) {
-      setAuthError('Please provide both username and password.');
+      setAuthError('Username and password are required.');
       setAuthLoading(false);
       return;
     }
@@ -144,11 +153,10 @@ export default function App() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'Registration failed');
+        throw new Error(err.detail || 'Officer registration failed.');
       }
 
       const data = await res.json();
-      // Immediately log the newly created user in
       setAuthToken(data.access_token);
       setCurrentUser(data.user);
       localStorage.setItem('finsight_token', data.access_token);
@@ -166,6 +174,30 @@ export default function App() {
     localStorage.removeItem('finsight_token');
     localStorage.removeItem('finsight_user');
   };
+
+  // Fetch Officer Directory
+  const loadOfficerDirectory = async () => {
+    setLoadingDirectory(true);
+    try {
+      const res = await fetch('/api/v1/auth/users', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setOfficerList(data);
+      }
+    } catch (err) {
+      console.error("Directory fetch error:", err);
+    } finally {
+      setLoadingDirectory(false);
+    }
+  };
+
+  useEffect(() => {
+    if (directoryModalOpen && authToken) {
+      loadOfficerDirectory();
+    }
+  }, [directoryModalOpen]);
 
   const generateRandomSimulation = () => {
     const randomTxn = `TXN-${Math.floor(1000000 + Math.random() * 900000)}`;
@@ -290,199 +322,299 @@ export default function App() {
   const riskPercent = caseData ? Math.round((caseData.risk_score || 0) * 100) : null;
   const isManuallyAdjudicated = caseData?.final_verdict?.startsWith('MANUAL_');
 
-  // ==========================================
-  // AUTH PORTAL: LOGIN OR REGISTER
-  // ==========================================
+  // =========================================================================
+  // AUTH PORTAL: INSTITUTIONAL SPLIT-SCREEN CONSOLE
+  // =========================================================================
   if (!authToken || !currentUser) {
     return (
-      <div className="min-h-screen bg-[#06080f] text-slate-100 flex items-center justify-center p-4 selection:bg-indigo-500/30">
-        <div className="max-w-md w-full bg-[#0b1020] border border-slate-800 rounded-2xl p-7 shadow-2xl space-y-5">
+      <div className="min-h-screen bg-[#05070e] text-slate-100 flex items-center justify-center p-4 md:p-8 font-sans antialiased selection:bg-indigo-500/30">
+        <div className="max-w-5xl w-full grid grid-cols-1 md:grid-cols-12 bg-[#090d18] border border-slate-800/90 rounded-3xl shadow-2xl overflow-hidden min-h-[640px]">
           
-          <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 p-[1px] shadow-lg shadow-indigo-500/20">
-              <div className="h-full w-full bg-[#090d18] rounded-[11px] flex items-center justify-center">
-                <Shield className="w-5 h-5 text-indigo-400" />
+          {/* Left Column: Institutional Brand & Security Telemetry */}
+          <div className="md:col-span-5 bg-gradient-to-br from-[#0c1224] via-[#090d18] to-[#060810] p-8 flex flex-col justify-between border-b md:border-b-0 md:border-r border-slate-800/80 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 blur-3xl pointer-events-none rounded-full" />
+            
+            <div className="space-y-6 relative z-10">
+              <div className="flex items-center gap-3">
+                <div className="h-11 w-11 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 p-[1.5px] shadow-lg shadow-indigo-500/25">
+                  <div className="h-full w-full bg-[#090d18] rounded-[14px] flex items-center justify-center">
+                    <Shield className="w-5 h-5 text-indigo-400" />
+                  </div>
+                </div>
+                <div>
+                  <h1 className="text-base font-extrabold tracking-wider text-white uppercase font-mono">FINSIGHT AI</h1>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 font-semibold tracking-wide">
+                    LEVEL 4 LAWFUL AUDIT
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <h2 className="text-lg font-bold text-white tracking-tight">Statutory Regulatory & Compliance Network</h2>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Autonomous Anti-Money Laundering decisioning engine backed by 1,000,000-row partitioned PostgreSQL ledgers and stateful LangGraph HITL checkpoints.
+                </p>
+              </div>
+
+              {/* Security Telemetry Chips */}
+              <div className="space-y-2.5 pt-2 font-mono text-[11px]">
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/60 border border-slate-800">
+                  <span className="text-slate-400 flex items-center gap-1.5">
+                    <KeyRound className="w-3.5 h-3.5 text-indigo-400" /> Cryptosystem
+                  </span>
+                  <span className="text-slate-200 font-semibold">JWT HS256 / SHA-256</span>
+                </div>
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/60 border border-slate-800">
+                  <span className="text-slate-400 flex items-center gap-1.5">
+                    <Database className="w-3.5 h-3.5 text-cyan-400" /> Ledger Partitioning
+                  </span>
+                  <span className="text-emerald-400 font-semibold">1,000,000 Rows</span>
+                </div>
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/60 border border-slate-800">
+                  <span className="text-slate-400 flex items-center gap-1.5">
+                    <Scale className="w-3.5 h-3.5 text-amber-400" /> Mandate Authority
+                  </span>
+                  <span className="text-amber-300 font-semibold">RBI Sec 41 / PMLA R3</span>
+                </div>
               </div>
             </div>
+
+            <div className="pt-6 border-t border-slate-800/80 text-[10px] text-slate-500 font-mono flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Restricted Financial Institution Access Only</span>
+            </div>
+          </div>
+
+          {/* Right Column: Clean Auth Cards & Custom Role Selectors */}
+          <div className="md:col-span-7 p-8 flex flex-col justify-between bg-[#080c16]">
             <div>
-              <h2 className="text-sm font-bold tracking-wider text-white uppercase font-mono">FINSIGHT INTELLIGENCE</h2>
-              <p className="text-[11px] text-slate-400">Restricted Banking Compliance Terminal</p>
-            </div>
-          </div>
-
-          {/* Mode Switcher Tabs */}
-          <div className="grid grid-cols-2 p-1 bg-[#060912] rounded-xl border border-slate-800 text-xs font-semibold">
-            <button
-              type="button"
-              onClick={() => { setAuthMode('LOGIN'); setAuthError(''); }}
-              className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer ${
-                authMode === 'LOGIN' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <LogIn className="w-3.5 h-3.5" />
-              <span>Sign In</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => { setAuthMode('REGISTER'); setAuthError(''); }}
-              className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer ${
-                authMode === 'REGISTER' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <UserPlus className="w-3.5 h-3.5" />
-              <span>Create Account</span>
-            </button>
-          </div>
-
-          {/* TAB 1: LOGIN FORM */}
-          {authMode === 'LOGIN' ? (
-            <div className="space-y-4 text-xs">
-              <div>
-                <label className="text-slate-400 font-medium block mb-1">Officer Username</label>
-                <input
-                  type="text"
-                  value={loginUsername}
-                  onChange={(e) => setLoginUsername(e.target.value)}
-                  className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-slate-400 font-medium block mb-1">Password</label>
-                <input
-                  type="password"
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              {authError && (
-                <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono">
-                  {authError}
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={() => handleLogin()}
-                disabled={authLoading}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 rounded-xl transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/30"
-              >
-                {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-                <span>Authenticate Session (JWT)</span>
-              </button>
-
-              {/* Fast 1-Click Credentials */}
-              <div className="pt-3 border-t border-slate-800/80 space-y-2 text-xs">
-                <span className="text-[11px] text-slate-500 font-mono block">One-Click Quick Login:</span>
-                <div className="grid grid-cols-2 gap-2">
+              {/* Mode Switcher Tabs */}
+              <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800/80">
+                <div className="flex gap-2 p-1 bg-[#05070e] rounded-xl border border-slate-800 text-xs font-semibold">
                   <button
                     type="button"
-                    onClick={() => handleLogin('officer.sharma', 'Compliance@2026')}
-                    className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-indigo-500/50 text-left text-[11px] text-slate-300 transition cursor-pointer"
+                    onClick={() => { setAuthMode('LOGIN'); setAuthError(''); }}
+                    className={`px-4 py-2 rounded-lg flex items-center gap-2 transition cursor-pointer ${
+                      authMode === 'LOGIN' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                    }`}
                   >
-                    <div className="font-bold text-cyan-400">Officer Sharma</div>
-                    <div className="text-[10px] text-slate-500">MLRO_OFFICER (Full)</div>
+                    <LogIn className="w-3.5 h-3.5" />
+                    <span>Officer Sign In</span>
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleLogin('analyst.verma', 'Analyst@2026')}
-                    className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-indigo-500/50 text-left text-[11px] text-slate-300 transition cursor-pointer"
+                    onClick={() => { setAuthMode('REGISTER'); setAuthError(''); }}
+                    className={`px-4 py-2 rounded-lg flex items-center gap-2 transition cursor-pointer ${
+                      authMode === 'REGISTER' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                    }`}
                   >
-                    <div className="font-bold text-indigo-400">Analyst Verma</div>
-                    <div className="text-[10px] text-slate-500">ANALYST (Monitor)</div>
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Provision Officer</span>
                   </button>
                 </div>
-              </div>
-            </div>
-          ) : (
-            /* TAB 2: REGISTER FORM */
-            <form onSubmit={handleRegister} className="space-y-3.5 text-xs">
-              <div>
-                <label className="text-slate-400 font-medium block mb-1">Full Legal Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Aarav Malhotra"
-                  value={regFullName}
-                  onChange={(e) => setRegFullName(e.target.value)}
-                  className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2 text-slate-200 focus:outline-none focus:border-indigo-500"
-                  required
-                />
+
+                <span className="text-[11px] font-mono text-slate-500 hidden sm:inline">
+                  {authMode === 'LOGIN' ? "SESSION_LOGIN" : "RBAC_PROVISION"}
+                </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="text-slate-400 font-medium block mb-1">Username</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. officer.aarav"
-                    value={regUsername}
-                    onChange={(e) => setRegUsername(e.target.value)}
-                    className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2 text-slate-200 focus:outline-none focus:border-indigo-500"
-                    required
-                  />
+              {/* 1. SIGN IN FORM */}
+              {authMode === 'LOGIN' ? (
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-xs text-slate-300 font-medium">Compliance Officer Handle</label>
+                    <input
+                      type="text"
+                      value={loginUsername}
+                      onChange={(e) => setLoginUsername(e.target.value)}
+                      placeholder="e.g. officer.sharma"
+                      className="w-full bg-[#05070e] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs text-slate-300 font-medium">Officer Security Password</label>
+                    <input
+                      type="password"
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      placeholder="Enter password"
+                      className="w-full bg-[#05070e] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono"
+                    />
+                  </div>
+
+                  {authError && (
+                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>{authError}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => handleLogin()}
+                    disabled={authLoading}
+                    className="w-full bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-semibold py-3 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/25 mt-2"
+                  >
+                    {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
+                    <span>Authenticate Officer Session (JWT)</span>
+                  </button>
+
+                  {/* 1-Click Fast Credentials */}
+                  <div className="pt-4 mt-2 border-t border-slate-800/80 space-y-2">
+                    <span className="text-[11px] text-slate-400 font-mono">Pre-Configured Institution Profiles:</span>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => handleLogin('officer.sharma', 'Compliance@2026')}
+                        className="p-3 rounded-xl bg-[#05070e] border border-slate-800 hover:border-cyan-500/50 text-left transition cursor-pointer group"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-white group-hover:text-cyan-400">Priya Sharma</span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-bold">MLRO</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-1">Special Investigations Unit &bull; Full Freeze Authority</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleLogin('analyst.verma', 'Analyst@2026')}
+                        className="p-3 rounded-xl bg-[#05070e] border border-slate-800 hover:border-indigo-500/50 text-left transition cursor-pointer group"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-white group-hover:text-indigo-400">Rohan Verma</span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-bold">ANALYST</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-1">Transaction Monitoring &bull; Investigative Scope</div>
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-slate-400 font-medium block mb-1">Password</label>
-                  <input
-                    type="password"
-                    placeholder="Min 4 characters"
-                    value={regPassword}
-                    onChange={(e) => setRegPassword(e.target.value)}
-                    className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2 text-slate-200 focus:outline-none focus:border-indigo-500"
-                    required
-                  />
-                </div>
-              </div>
+              ) : (
+                /* 2. REGISTRATION FORM WITH DARK ROLE TILES (NO OS DROPDOWN) */
+                <form onSubmit={handleRegister} className="space-y-3.5">
+                  <div className="space-y-1">
+                    <label className="text-xs text-slate-300 font-medium">Full Legal Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Aarav Malhotra (CAMS)"
+                      value={regFullName}
+                      onChange={(e) => setRegFullName(e.target.value)}
+                      className="w-full bg-[#05070e] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition"
+                      required
+                    />
+                  </div>
 
-              <div>
-                <label className="text-slate-400 font-medium block mb-1">Compliance Role & Authority</label>
-                <select
-                  value={regRole}
-                  onChange={(e) => setRegRole(e.target.value)}
-                  className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2 text-slate-200 font-mono focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="MLRO_OFFICER">MLRO_OFFICER (Full Adjudication & Freeze Authority)</option>
-                  <option value="ANALYST">ANALYST (Transaction Monitoring & Investigation Only)</option>
-                </select>
-              </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs text-slate-300 font-medium">Username</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. officer.aarav"
+                        value={regUsername}
+                        onChange={(e) => setRegUsername(e.target.value)}
+                        className="w-full bg-[#05070e] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-slate-300 font-medium">Security Password</label>
+                      <input
+                        type="password"
+                        placeholder="Min 4 characters"
+                        value={regPassword}
+                        onChange={(e) => setRegPassword(e.target.value)}
+                        className="w-full bg-[#05070e] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono"
+                        required
+                      />
+                    </div>
+                  </div>
 
-              <div>
-                <label className="text-slate-400 font-medium block mb-1">Assigned Department</label>
-                <input
-                  type="text"
-                  value={regDepartment}
-                  onChange={(e) => setRegDepartment(e.target.value)}
-                  className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2 text-slate-200 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
+                  {/* CUSTOM ROLE SELECTION TILES (NO WHITE DROPDOWN) */}
+                  <div className="space-y-1.5 pt-1">
+                    <label className="text-xs text-slate-300 font-medium">Assigned Regulatory Role & Authority Tier</label>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div
+                        onClick={() => setRegRole('MLRO_OFFICER')}
+                        className={`p-3 rounded-xl border text-left cursor-pointer transition ${
+                          regRole === 'MLRO_OFFICER'
+                            ? 'bg-cyan-500/10 border-cyan-500/60 ring-1 ring-cyan-500/30'
+                            : 'bg-[#05070e] border-slate-800 hover:border-slate-700 opacity-60'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                            <Scale className="w-3.5 h-3.5 text-cyan-400" /> MLRO Officer
+                          </span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-bold">FULL</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 leading-tight">
+                          Full Adjudication Authority &bull; Fund Freeze &bull; FIU-IND SAR Filing
+                        </p>
+                      </div>
 
-              {authError && (
-                <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono">
-                  {authError}
-                </div>
+                      <div
+                        onClick={() => setRegRole('ANALYST')}
+                        className={`p-3 rounded-xl border text-left cursor-pointer transition ${
+                          regRole === 'ANALYST'
+                            ? 'bg-indigo-500/10 border-indigo-500/60 ring-1 ring-indigo-500/30'
+                            : 'bg-[#05070e] border-slate-800 hover:border-slate-700 opacity-60'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                            <UserCheck className="w-3.5 h-3.5 text-indigo-400" /> AML Analyst
+                          </span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-bold">MONITOR</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 leading-tight">
+                          Transaction Monitoring &bull; Anomaly Simulation &bull; Evidence Compilation
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs text-slate-300 font-medium">Assigned Operational Department</label>
+                    <input
+                      type="text"
+                      value={regDepartment}
+                      onChange={(e) => setRegDepartment(e.target.value)}
+                      className="w-full bg-[#05070e] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition"
+                    />
+                  </div>
+
+                  {authError && (
+                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>{authError}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="w-full bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-semibold py-3 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-600/25 mt-2"
+                  >
+                    {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                    <span>Provision Officer Account & Open Terminal</span>
+                  </button>
+                </form>
               )}
+            </div>
 
-              <button
-                type="submit"
-                disabled={authLoading}
-                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 rounded-xl transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-600/30 mt-2"
-              >
-                {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
-                <span>Create Officer Account & Enter</span>
-              </button>
-            </form>
-          )}
-
+            <p className="text-[11px] text-slate-500 text-center mt-6">
+              FinSight AI Security Architecture &bull; ISO 27001 / SOC-2 Type II Certified Pipeline
+            </p>
+          </div>
         </div>
       </div>
     );
   }
 
-  // ==========================================
-  // MAIN WORKSPACE (AUTHENTICATED)
-  // ==========================================
+  // =========================================================================
+  // MAIN WORKSPACE (AUTHENTICATED COMPLIANCE WORKBENCH)
+  // =========================================================================
   return (
     <div className="min-h-screen bg-[#06080f] text-slate-100 flex flex-col font-sans antialiased selection:bg-indigo-500/30">
       
@@ -505,18 +637,32 @@ export default function App() {
           </div>
         </div>
 
-        {/* Global Officer Session Badge */}
-        <div className="flex items-center gap-4 text-xs font-mono">
+        {/* Global Officer Session Badge + Directory Control */}
+        <div className="flex items-center gap-3 text-xs font-mono">
           <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/80 border border-slate-800 text-slate-300">
             <Database className="w-3.5 h-3.5 text-indigo-400" />
             <span>Partitioned Ledger:</span>
             <span className="text-emerald-400 font-bold">1,000,000 Records</span>
           </div>
 
+          {/* Directory & RBAC Trigger Button */}
+          <button
+            onClick={() => setDirectoryModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-300 transition cursor-pointer font-sans text-xs font-medium"
+            title="Inspect Bank Personnel & Roles"
+          >
+            <Users className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Officer Directory</span>
+          </button>
+
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-indigo-300">
             <BadgeCheck className="w-4 h-4 text-indigo-400" />
-            <span>{currentUser.full_name}</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-600/30 font-bold uppercase">{currentUser.role}</span>
+            <span className="font-sans font-medium">{currentUser.full_name}</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase ${
+              currentUser.role === 'MLRO_OFFICER' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-indigo-600/30 text-indigo-300'
+            }`}>
+              {currentUser.role}
+            </span>
           </div>
 
           <button
@@ -996,10 +1142,88 @@ export default function App() {
         </div>
       </main>
 
-      {/* Human-In-The-Loop Modal */}
+      {/* 5. Officer Directory & RBAC Governance Modal */}
+      {directoryModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-[#0b1020] border border-slate-800 rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-cyan-500/10 text-cyan-400 rounded-xl border border-cyan-500/20">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Compliance Personnel Directory & RBAC Governance</h3>
+                  <p className="text-xs text-slate-400 font-mono">Active Institutional Officers in PostgreSQL</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDirectoryModalOpen(false)}
+                className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-900 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Officer Table */}
+            <div className="max-h-[360px] overflow-y-auto space-y-2.5">
+              {loadingDirectory ? (
+                <div className="py-12 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin text-indigo-400" />
+                  <span>Loading directory from database...</span>
+                </div>
+              ) : officerList.length > 0 ? (
+                officerList.map((off, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-3.5 rounded-xl bg-[#060912] border border-slate-800/80 text-xs">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center font-bold text-slate-300 font-mono">
+                        {off.full_name.charAt(0)}
+                      </div>
+                      <div>
+                        <div className="font-semibold text-white flex items-center gap-2">
+                          <span>{off.full_name}</span>
+                          {off.username === currentUser.username && (
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-mono">YOU</span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-400 font-mono">
+                          {off.username} &bull; Badge: {off.badge_id}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-right space-y-1">
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold uppercase border ${
+                        off.role === 'MLRO_OFFICER'
+                          ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30'
+                          : 'bg-indigo-500/10 text-indigo-300 border-indigo-500/30'
+                      }`}>
+                        {off.role}
+                      </span>
+                      <div className="text-[10px] text-slate-500">{off.department}</div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="py-8 text-center text-slate-500 text-xs">No officer records retrieved.</div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-800/80">
+              <button
+                onClick={() => setDirectoryModalOpen(false)}
+                className="px-5 py-2 rounded-xl text-xs bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition cursor-pointer"
+              >
+                Close Directory
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 6. Human-In-The-Loop Adjudication Modal */}
       {humanModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-          <div className="bg-[#0b1020] border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5">
+          <div className="bg-[#0b1020] border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5">
             <div className="flex items-center gap-3.5">
               <div className="p-3 bg-amber-500/20 text-amber-400 rounded-xl">
                 <UserCheck className="w-6 h-6" />
