@@ -3,7 +3,6 @@ import hashlib
 import json
 import random
 import datetime
-from decimal import Decimal
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel
@@ -41,20 +40,6 @@ class MakerRecommendationPayload(BaseModel):
 class CheckerExecutionPayload(BaseModel):
     final_decision: str
     statutory_memo: str
-
-def json_default_serializer(obj: Any):
-    if hasattr(obj, "model_dump"):
-        return obj.model_dump()
-    if hasattr(obj, "dict"):
-        return obj.dict()
-    if isinstance(obj, (datetime.datetime, datetime.date)):
-        return obj.isoformat()
-    if isinstance(obj, Decimal):
-        return float(obj)
-    return str(obj)
-
-def safe_json_dumps(data: Any) -> str:
-    return json.dumps(data, default=json_default_serializer)
 
 def safe_dict(val: Any) -> Dict[str, Any]:
     if val is None:
@@ -95,6 +80,7 @@ def format_case_row(row_dict: Dict[str, Any]) -> Dict[str, Any]:
         "sla_deadline": row_dict.get("sla_deadline", "45m remaining"),
         "status": row_dict["status"],
         "final_verdict": row_dict.get("final_verdict"),
+        "fiu_docket_id": row_dict.get("fiu_docket_id"),
         "maker_status": safe_dict(row_dict.get("maker_status")),
         "checker_status": safe_dict(row_dict.get("checker_status")),
         "findings": safe_list(row_dict.get("findings")),
@@ -111,7 +97,7 @@ def format_case_row(row_dict: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 def seed_enterprise_cases_if_empty(conn):
-    count = conn.execute(text("SELECT COUNT(*) FROM compliance_cases WHERE status != 'FINALIZED';")).scalar()
+    count = conn.execute(text("SELECT COUNT(*) FROM compliance_cases WHERE status != 'FINALIZED' AND status != 'ESCALATED_FIU';")).scalar()
     if count == 0:
         SEED_CASES = [
             {
@@ -126,18 +112,19 @@ def seed_enterprise_cases_if_empty(conn):
                 "priority": "P1 - CRITICAL",
                 "sla_deadline": "28m remaining",
                 "status": "PENDING_CHECKER",
-                "maker_status": safe_json_dumps({
+                "fiu_docket_id": None,
+                "maker_status": json.dumps({
                     "decision": "RECOMMEND_REJECT",
                     "summary": "First-time transfer to offshore shell company. 32.2x velocity spike exceeds statutory risk ceilings.",
                     "officer": "Rohan Verma (AML-33012)",
                     "username": "analyst.verma"
                 }),
-                "findings": safe_json_dumps([
+                "findings": json.dumps([
                     {"agent": "TransactionInvestigator", "risk_level": "HIGH", "score_delta": 0.45, "details": "High-risk transfer: INR 1,450,000 sent to first-time beneficiary 'Panama Horizon Shell Corp' via SWIFT cross-border corridor."},
                     {"agent": "CustomerRiskAnalyst", "risk_level": "HIGH", "score_delta": 0.35, "details": "Critical velocity spike: 32.22x deviation over 30-day baseline average (INR 45,000)."},
                     {"agent": "CustomerRiskAnalyst", "risk_level": "HIGH", "score_delta": 0.40, "details": "Entity watchlist hit: Beneficiary matched high-risk offshore shell jurisdiction index."}
                 ]),
-                "retrieved_policies": safe_json_dumps([
+                "retrieved_policies": json.dumps([
                     {"document_title": "Master Direction - Know Your Customer (KYC) Direction, 2016", "citation": "RBI Section 41", "section": "Section 41 - Enhanced Due Diligence", "snippet": "Regulated Entities shall apply Enhanced Due Diligence measures to high-risk accounts and cross-border transfers involving unverified offshore corporate structures."}
                 ])
             },
@@ -153,17 +140,18 @@ def seed_enterprise_cases_if_empty(conn):
                 "priority": "P1 - CRITICAL",
                 "sla_deadline": "1h 12m remaining",
                 "status": "PENDING_CHECKER",
-                "maker_status": safe_json_dumps({
+                "fiu_docket_id": None,
+                "maker_status": json.dumps({
                     "decision": "RECOMMEND_REJECT",
                     "summary": "Virtual digital asset arbitrage funnel. Sudden liquidity offramp with zero historical cryptocurrency activity.",
                     "officer": "Rohan Verma (AML-33012)",
                     "username": "analyst.verma"
                 }),
-                "findings": safe_json_dumps([
+                "findings": json.dumps([
                     {"agent": "TransactionInvestigator", "risk_level": "HIGH", "score_delta": 0.45, "details": "INR 1,850,000 sent to unlinked VDA custodial wallet exchange in British Virgin Islands."},
                     {"agent": "CustomerRiskAnalyst", "risk_level": "HIGH", "score_delta": 0.35, "details": "Velocity deviation of 30.83x against customer monthly turnover."}
                 ]),
-                "retrieved_policies": safe_json_dumps([
+                "retrieved_policies": json.dumps([
                     {"document_title": "Master Direction - Know Your Customer (KYC) Direction, 2016", "citation": "RBI Section 43", "section": "Section 43 - Virtual Digital Assets", "snippet": "Banks must carry out customer due diligence processes for transactions in virtual digital assets in line with PML Rules and FATF Recommendation 15."}
                 ])
             }
@@ -173,11 +161,11 @@ def seed_enterprise_cases_if_empty(conn):
                 INSERT INTO compliance_cases (
                     case_id, transaction_id, customer_name, beneficiary_name, 
                     amount, channel, historical_avg, risk_score, priority, 
-                    sla_deadline, status, maker_status, findings, retrieved_policies
+                    sla_deadline, status, fiu_docket_id, maker_status, findings, retrieved_policies
                 ) VALUES (
                     :case_id, :transaction_id, :customer_name, :beneficiary_name, 
                     :amount, :channel, :historical_avg, :risk_score, :priority, 
-                    :sla_deadline, :status, CAST(:maker_status AS jsonb), CAST(:findings AS jsonb), CAST(:retrieved_policies AS jsonb)
+                    :sla_deadline, :status, :fiu_docket_id, CAST(:maker_status AS jsonb), CAST(:findings AS jsonb), CAST(:retrieved_policies AS jsonb)
                 ) ON CONFLICT (case_id) DO NOTHING;
             """), sc)
 
@@ -197,6 +185,7 @@ def init_case_management_db():
                     priority VARCHAR(16) DEFAULT 'P1 - CRITICAL',
                     sla_deadline VARCHAR(64) DEFAULT '45m remaining',
                     status VARCHAR(32) NOT NULL,
+                    fiu_docket_id VARCHAR(64),
                     maker_status JSONB,
                     checker_status JSONB,
                     final_verdict VARCHAR(64),
@@ -207,6 +196,7 @@ def init_case_management_db():
                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 );
                 CREATE INDEX IF NOT EXISTS idx_cases_status ON compliance_cases(status);
+                ALTER TABLE compliance_cases ADD COLUMN IF NOT EXISTS fiu_docket_id VARCHAR(64);
             """))
             seed_enterprise_cases_if_empty(conn)
     except Exception as e:
@@ -387,17 +377,18 @@ async def ingest_core_banking_stream(request: Request):
         "priority": "P1 - CRITICAL",
         "sla_deadline": f"{random.randint(15, 55)}m remaining",
         "status": "PENDING_CHECKER",
-        "maker_status": safe_json_dumps({
+        "fiu_docket_id": None,
+        "maker_status": json.dumps({
             "decision": "RECOMMEND_REJECT",
             "summary": f"Inbound core banking stream anomaly alert. {ratio}x turnover velocity spike sent to unverified offshore entity.",
             "officer": "Rohan Verma (AML-33012)",
             "username": "analyst.verma"
         }),
-        "findings": safe_json_dumps([
+        "findings": json.dumps([
             {"agent": "TransactionInvestigator", "risk_level": "HIGH", "score_delta": 0.45, "details": f"Core-banking high value alert: INR {float(txn['amount']):,.2f} routed via {txn['channel']}."},
             {"agent": "CustomerRiskAnalyst", "risk_level": "HIGH", "score_delta": 0.35, "details": f"Velocity multiplier calculated at {ratio}x above 30-day customer historical average."}
         ]),
-        "retrieved_policies": safe_json_dumps([
+        "retrieved_policies": json.dumps([
             {"document_title": "Master Direction - Know Your Customer (KYC) Direction, 2016", "citation": "RBI Section 41", "section": "Section 41", "snippet": "Mandatory Enhanced Due Diligence required for accounts showing disproportionate velocity spikes."}
         ])
     }
@@ -407,18 +398,18 @@ async def ingest_core_banking_stream(request: Request):
             INSERT INTO compliance_cases (
                 case_id, transaction_id, customer_name, beneficiary_name, 
                 amount, channel, historical_avg, risk_score, priority, 
-                sla_deadline, status, maker_status, findings, retrieved_policies
+                sla_deadline, status, fiu_docket_id, maker_status, findings, retrieved_policies
             ) VALUES (
                 :case_id, :transaction_id, :customer_name, :beneficiary_name, 
                 :amount, :channel, :historical_avg, :risk_score, :priority, 
-                :sla_deadline, :status, CAST(:maker_status AS jsonb), CAST(:findings AS jsonb), CAST(:retrieved_policies AS jsonb)
+                :sla_deadline, :status, :fiu_docket_id, CAST(:maker_status AS jsonb), CAST(:findings AS jsonb), CAST(:retrieved_policies AS jsonb)
             );
         """), new_case)
 
     log_security_event("STREAM_ANOMALY_INGESTED", details=f"New alert {case_id} ingested into MLRO queue.")
     return {"status": "SUCCESS", "case_id": case_id, "amount": txn["amount"]}
 
-# Checker Adjudication Execution (Practical & Streamlined - No Artificial Self-Block)
+# Checker Adjudication Execution with Formal Statutory Escalation
 @router.post("/investigations/{case_id}/checker-execute")
 async def checker_execute(case_id: str, payload: CheckerExecutionPayload, request: Request):
     checker = require_role(["MLRO_OFFICER"])(request)
@@ -429,11 +420,18 @@ async def checker_execute(case_id: str, payload: CheckerExecutionPayload, reques
     if not row:
         raise HTTPException(status_code=404, detail="Case record not found in compliance ledger.")
 
+    is_escalation = payload.final_decision == "CONFIRMED_ESCALATED"
+    fiu_docket = f"FIU-IND-STR-2026-{uuid.uuid4().hex[:6].upper()}" if is_escalation else None
+    new_status = "ESCALATED_FIU" if is_escalation else "FINALIZED"
+    final_verdict = "STATUTORY_ESCALATION_FIU_IND" if is_escalation else payload.final_decision
+
     checker_record = {
-        "decision": payload.final_decision,
-        "memo": payload.statutory_memo or "Ruling officially recorded and verified.",
+        "decision": final_verdict,
+        "memo": payload.statutory_memo or ("Referred to FIU-IND under PMLA Section 12 for external statutory adjudication." if is_escalation else "Ruling officially recorded."),
         "officer": f"{checker.full_name} ({checker.badge_id})",
         "username": checker.username,
+        "fiu_docket_id": fiu_docket,
+        "escalation_authority": "Financial Intelligence Unit - India (FIU-IND) & Enforcement Directorate" if is_escalation else "Internal Core Ledger",
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
     }
 
@@ -441,7 +439,7 @@ async def checker_execute(case_id: str, payload: CheckerExecutionPayload, reques
         if hasattr(request.app.state, "workflow") and request.app.state.workflow is not None:
             config = {"configurable": {"thread_id": case_id}}
             await request.app.state.workflow.ainvoke(
-                Command(resume={"decision": payload.final_decision, "notes": payload.statutory_memo}),
+                Command(resume={"decision": final_verdict, "notes": checker_record["memo"]}),
                 config=config
             )
     except Exception as e:
@@ -450,21 +448,29 @@ async def checker_execute(case_id: str, payload: CheckerExecutionPayload, reques
     with engine.begin() as conn:
         conn.execute(text("""
             UPDATE compliance_cases SET
-                status = 'FINALIZED',
+                status = :status,
                 final_verdict = :verdict,
+                fiu_docket_id = :fiu,
                 checker_status = CAST(:chk AS jsonb),
                 updated_at = CURRENT_TIMESTAMP
             WHERE case_id = :cid;
         """), {
-            "verdict": payload.final_decision,
-            "chk": safe_json_dumps(checker_record),
+            "status": new_status,
+            "verdict": final_verdict,
+            "fiu": fiu_docket,
+            "chk": json.dumps(checker_record),
             "cid": case_id
         })
 
     with engine.connect() as conn:
         updated_row = conn.execute(text("SELECT * FROM compliance_cases WHERE case_id = :cid;"), {"cid": case_id}).mappings().first()
 
-    log_security_event("CHECKER_EXECUTION_FINALIZED", username=checker.username, badge_id=checker.badge_id, details=f"Case {case_id} finalized as {payload.final_decision}")
+    log_security_event(
+        "STATUTORY_ESCALATION_FILED" if is_escalation else "CHECKER_EXECUTION_FINALIZED", 
+        username=checker.username, 
+        badge_id=checker.badge_id, 
+        details=f"Case {case_id} -> {final_verdict} (Docket: {fiu_docket})"
+    )
     return {
         "status": "SUCCESS",
         "case": format_case_row(dict(updated_row))
@@ -474,6 +480,15 @@ async def checker_execute(case_id: str, payload: CheckerExecutionPayload, reques
 @router.post("/investigations/{case_id}/maker-recommend")
 async def maker_recommend(case_id: str, payload: MakerRecommendationPayload, request: Request):
     maker = require_role(["ANALYST", "MLRO_OFFICER"])(request)
+    
+    with engine.connect() as conn:
+        existing = conn.execute(text("SELECT status FROM compliance_cases WHERE case_id = :cid;"), {"cid": case_id}).mappings().first()
+    
+    if not existing:
+        raise HTTPException(status_code=404, detail="Case not found.")
+    if existing["status"] in ["PENDING_CHECKER", "FINALIZED", "ESCALATED_FIU"]:
+        raise HTTPException(status_code=400, detail="This case has already been transmitted to the MLRO. Duplicate submission blocked.")
+
     maker_data = {
         "decision": payload.recommendation,
         "summary": payload.findings_summary,
@@ -488,7 +503,7 @@ async def maker_recommend(case_id: str, payload: MakerRecommendationPayload, req
                 maker_status = CAST(:m AS jsonb),
                 updated_at = CURRENT_TIMESTAMP
             WHERE case_id = :cid;
-        """), {"m": safe_json_dumps(maker_data), "cid": case_id})
+        """), {"m": json.dumps(maker_data), "cid": case_id})
 
     with engine.connect() as conn:
         updated_row = conn.execute(text("SELECT * FROM compliance_cases WHERE case_id = :cid;"), {"cid": case_id}).mappings().first()
@@ -564,10 +579,11 @@ async def simulate_investigation(payload: TransactionCreatePayload, request: Req
         "priority": "P1 - CRITICAL" if is_high_risk else "P3 - LOW",
         "sla_deadline": "45m remaining" if is_high_risk else "N/A",
         "status": "PENDING_MAKER" if is_high_risk else "FINALIZED",
+        "fiu_docket_id": None,
         "final_verdict": "AUTO_APPROVED" if not is_high_risk else None,
-        "findings": safe_json_dumps(findings),
-        "retrieved_policies": safe_json_dumps(policies),
-        "execution_trace": safe_json_dumps(trace)
+        "findings": json.dumps(findings),
+        "retrieved_policies": json.dumps(policies),
+        "execution_trace": json.dumps(trace)
     }
 
     with engine.begin() as conn:
@@ -575,11 +591,11 @@ async def simulate_investigation(payload: TransactionCreatePayload, request: Req
             INSERT INTO compliance_cases (
                 case_id, transaction_id, customer_name, beneficiary_name, 
                 amount, channel, historical_avg, risk_score, priority, 
-                sla_deadline, status, final_verdict, findings, retrieved_policies, execution_trace
+                sla_deadline, status, fiu_docket_id, final_verdict, findings, retrieved_policies, execution_trace
             ) VALUES (
                 :case_id, :transaction_id, :customer_name, :beneficiary_name, 
                 :amount, :channel, :historical_avg, :risk_score, :priority, 
-                :sla_deadline, :status, :final_verdict, CAST(:findings AS jsonb), CAST(:retrieved_policies AS jsonb), CAST(:execution_trace AS jsonb)
+                :sla_deadline, :status, :fiu_docket_id, :final_verdict, CAST(:findings AS jsonb), CAST(:retrieved_policies AS jsonb), CAST(:execution_trace AS jsonb)
             );
         """), case_record)
 
