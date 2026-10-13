@@ -31,13 +31,9 @@ import {
   Radio,
   Activity,
   Layers,
-  ChevronRight,
   Database,
   Cpu,
-  KeyRound,
-  FileCheck2,
-  Terminal,
-  ExternalLink
+  KeyRound
 } from 'lucide-react';
 
 export default function App() {
@@ -215,7 +211,7 @@ export default function App() {
         if (preserveCaseId) {
           const match = data.find(c => c.case_id === preserveCaseId);
           if (match) setSelectedCase(match);
-        } else if (data.length > 0 && !selectedCase) {
+        } else if (!selectedCase && data.length > 0) {
           const pendingMatch = data.find(c => c.status !== 'FINALIZED');
           setSelectedCase(pendingMatch || data[0]);
         }
@@ -473,7 +469,7 @@ export default function App() {
 
                 <div className="p-3.5 rounded-xl bg-[#0e172c] border border-slate-800 space-y-1">
                   <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1.5">
-                    <UserCheck className="w-3 h-3 text-indigo-400" /> Segregation
+                    <UserCheck className="w-3.5 h-3.5 text-indigo-400" /> Segregation
                   </div>
                   <div className="text-sm font-bold text-white">Maker & Checker</div>
                   <div className="text-[10px] text-indigo-400">Enforced SoD</div>
@@ -481,7 +477,7 @@ export default function App() {
 
                 <div className="p-3.5 rounded-xl bg-[#0e172c] border border-slate-800 space-y-1">
                   <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1.5">
-                    <KeyRound className="w-3 h-3 text-emerald-400" /> Cryptography
+                    <KeyRound className="w-3.5 h-3.5 text-emerald-400" /> Cryptography
                   </div>
                   <div className="text-sm font-bold text-white">RFC 6238 TOTP</div>
                   <div className="text-[10px] text-emerald-400">HttpOnly Binding</div>
@@ -934,7 +930,10 @@ export default function App() {
                     displayedCases.map((item) => (
                       <div
                         key={item.case_id}
-                        onClick={() => setSelectedCase(item)}
+                        onClick={() => {
+                          setSelectedCase(item);
+                          setErrorMessage('');
+                        }}
                         className={`p-4 rounded-xl border text-xs cursor-pointer transition space-y-2 ${
                           selectedCase?.case_id === item.case_id
                             ? 'bg-[#121e3a] border-cyan-500/80 shadow-md'
@@ -972,7 +971,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Right Column: Case Dossier & Adjudication Controls */}
+              {/* Right Column: Case Dossier & Direct Adjudication Controls */}
               <div className="col-span-12 lg:col-span-8 space-y-6">
                 {selectedCase ? (
                   <div className="bg-[#0c1427] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
@@ -1012,7 +1011,7 @@ export default function App() {
                         "{selectedCase.maker_status?.summary || "Automated anomaly flagged by multi-agent engine. Review required."}"
                       </p>
                       <div className="text-[10px] text-slate-500 font-mono">
-                        Investigated by: {selectedCase.maker_status?.officer || "Rohan Verma (AML-33012)"}
+                        Investigated by: {selectedCase.maker_status?.officer || "Compliance Analyst"}
                       </div>
                     </div>
 
@@ -1076,7 +1075,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Statutory Adjudication Controls */}
+                    {/* Statutory Adjudication Controls (Always Available for any Pending Case) */}
                     {selectedCase.status === 'FINALIZED' ? (
                       <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-800 text-emerald-300 text-xs flex items-center justify-between shadow-lg">
                         <div className="space-y-1">
@@ -1589,3 +1588,4 @@ export default function App() {
     </div>
   );
 }
+EOF
