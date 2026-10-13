@@ -591,35 +591,50 @@ export default function App() {
                       <span className="text-cyan-400">Select to Populate</span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-3 gap-2">
                       <div
                         onClick={() => { setUsername('officer.sharma'); setPassword('Compliance@2026'); }}
-                        className={`p-3.5 rounded-xl border text-left transition cursor-pointer ${
+                        className={`p-3 rounded-xl border text-left transition cursor-pointer ${
                           username === 'officer.sharma' 
                             ? 'bg-cyan-950/40 border-cyan-500 ring-1 ring-cyan-500/30' 
                             : 'bg-[#0d1424] border-slate-800 hover:border-slate-700'
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-white">Priya Sharma</span>
-                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold">CHECKER</span>
+                          <span className="text-xs font-bold text-white truncate">Priya Sharma</span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold shrink-0">CHECKER</span>
                         </div>
-                        <div className="text-[10px] text-slate-400 mt-1 font-mono">MLRO &bull; Queue Adjudication</div>
+                        <div className="text-[10px] text-slate-400 mt-1 font-mono truncate">MLRO &bull; SIU</div>
+                      </div>
+
+                      <div
+                        onClick={() => { setUsername('officer.kapoor'); setPassword('Senior@2026'); }}
+                        className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                          username === 'officer.kapoor' 
+                            ? 'bg-emerald-950/40 border-emerald-500 ring-1 ring-emerald-500/30' 
+                            : 'bg-[#0d1424] border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-white truncate">Vikram Kapoor</span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold shrink-0">CHECKER</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-1 font-mono truncate">MLRO &bull; Directorate</div>
                       </div>
 
                       <div
                         onClick={() => { setUsername('analyst.verma'); setPassword('Analyst@2026'); }}
-                        className={`p-3.5 rounded-xl border text-left transition cursor-pointer ${
+                        className={`p-3 rounded-xl border text-left transition cursor-pointer ${
                           username === 'analyst.verma' 
                             ? 'bg-indigo-950/40 border-indigo-500 ring-1 ring-indigo-500/30' 
                             : 'bg-[#0d1424] border-slate-800 hover:border-slate-700'
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-white">Rohan Verma</span>
-                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold">MAKER</span>
+                          <span className="text-xs font-bold text-white truncate">Rohan Verma</span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold shrink-0">MAKER</span>
                         </div>
-                        <div className="text-[10px] text-slate-400 mt-1 font-mono">Analyst &bull; Simulation Desk</div>
+                        <div className="text-[10px] text-slate-400 mt-1 font-mono truncate">Analyst &bull; Triage</div>
                       </div>
                     </div>
                   </div>
