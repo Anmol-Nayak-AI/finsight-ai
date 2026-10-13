@@ -3,12 +3,13 @@ import hashlib
 import json
 import random
 import datetime
+from decimal import Decimal
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel
 from sqlalchemy import text
 from langgraph.types import Command
-from app.database import sync_engine as engine
+from app.database import engine, sync_engine
 from app.tools.compliance_tools import TransactionCreatePayload, register_custom_transaction
 from app.auth.security import (
     create_mfa_challenge_token,
@@ -22,6 +23,9 @@ from app.auth.security import (
     UserPrincipal,
     PRE_PROVISIONED_ROSTER
 )
+
+# Use synchronous connection pool engine for all routes
+engine = sync_engine
 
 router = APIRouter(prefix="/api/v1", tags=["Enterprise Compliance API"])
 
@@ -41,9 +45,7 @@ class CheckerExecutionPayload(BaseModel):
     final_decision: str
     statutory_memo: str
 
-# Helper functions to guarantee safe JSON handling across all PostgreSQL drivers
-from decimal import Decimal
-
+# Robust JSON Serializers
 def json_default_serializer(obj: Any) -> Any:
     if hasattr(obj, "model_dump"):
         return obj.model_dump()
@@ -107,7 +109,112 @@ def safe_list(val: Any) -> List[Any]:
             return []
     return []
 
+def format_case_row(row_dict: Dict[str, Any]) -> Dict[str, Any]:
+    status_str = row_dict["status"]
+    is_maker = status_str == "PENDING_MAKER"
+    is_checker = status_str == "PENDING_CHECKER"
+    return {
+        "case_id": row_dict["case_id"],
+        "transaction_id": row_dict["transaction_id"],
+        "customer_name": row_dict["customer_name"],
+        "beneficiary_name": row_dict["beneficiary_name"],
+        "amount": float(row_dict["amount"]),
+        "channel": row_dict["channel"],
+        "historical_avg": float(row_dict["historical_avg"]),
+        "risk_score": float(row_dict["risk_score"]),
+        "priority": row_dict.get("priority", "P1 - CRITICAL"),
+        "sla_deadline": row_dict.get("sla_deadline", "45m remaining"),
+        "status": status_str,
+        "requires_maker_review": is_maker,
+        "requires_checker_review": is_checker,
+        "final_verdict": row_dict.get("final_verdict"),
+        "maker_status": safe_dict(row_dict.get("maker_status")),
+        "checker_status": safe_dict(row_dict.get("checker_status")),
+        "findings": safe_list(row_dict.get("findings")),
+        "retrieved_policies": safe_list(row_dict.get("retrieved_policies")),
+        "execution_trace": safe_list(row_dict.get("execution_trace")),
+        "transaction_data": {
+            "transaction_id": row_dict["transaction_id"],
+            "customer_name": row_dict["customer_name"],
+            "beneficiary_name": row_dict["beneficiary_name"],
+            "amount": float(row_dict["amount"]),
+            "channel": row_dict["channel"],
+            "historical_avg": float(row_dict["historical_avg"])
+        }
+    }
+
 # 1. Initialize PostgreSQL Case Management Table & Seed Data
+def seed_enterprise_cases_if_empty(conn):
+    count = conn.execute(text("SELECT COUNT(*) FROM compliance_cases WHERE status != 'FINALIZED';")).scalar()
+    if count == 0:
+        SEED_CASES = [
+            {
+                "case_id": "CASE-99214A",
+                "transaction_id": "TXN-1049281",
+                "customer_name": "Aarav Malhotra",
+                "beneficiary_name": "Panama Horizon Shell Corp",
+                "amount": 1450000.00,
+                "channel": "SWIFT",
+                "historical_avg": 45000.00,
+                "risk_score": 1.00,
+                "priority": "P1 - CRITICAL",
+                "sla_deadline": "28m remaining",
+                "status": "PENDING_CHECKER",
+                "maker_status": safe_json_dumps({
+                    "decision": "RECOMMEND_REJECT",
+                    "summary": "First-time transfer to offshore shell company. 32.2x velocity spike exceeds statutory risk ceilings.",
+                    "officer": "Rohan Verma (AML-33012)",
+                    "username": "analyst.verma"
+                }),
+                "findings": safe_json_dumps([
+                    {"agent": "TransactionInvestigator", "risk_level": "HIGH", "score_delta": 0.45, "details": "High-risk transfer: INR 1,450,000 sent to first-time beneficiary 'Panama Horizon Shell Corp' via SWIFT cross-border corridor."},
+                    {"agent": "CustomerRiskAnalyst", "risk_level": "HIGH", "score_delta": 0.35, "details": "Critical velocity spike: 32.22x deviation over 30-day baseline average (INR 45,000)."},
+                    {"agent": "CustomerRiskAnalyst", "risk_level": "HIGH", "score_delta": 0.40, "details": "Entity watchlist hit: Beneficiary matched high-risk offshore shell jurisdiction index."}
+                ]),
+                "retrieved_policies": safe_json_dumps([
+                    {"document_title": "Master Direction - Know Your Customer (KYC) Direction, 2016", "citation": "RBI Section 41", "section": "Section 41 - Enhanced Due Diligence", "snippet": "Regulated Entities shall apply Enhanced Due Diligence measures to high-risk accounts and cross-border transfers involving unverified offshore corporate structures."}
+                ])
+            },
+            {
+                "case_id": "CASE-88310B",
+                "transaction_id": "TXN-1082914",
+                "customer_name": "Vikram Singhania",
+                "beneficiary_name": "KoinX BVI Crypto Exchange",
+                "amount": 1850000.00,
+                "channel": "RTGS",
+                "historical_avg": 60000.00,
+                "risk_score": 1.00,
+                "priority": "P1 - CRITICAL",
+                "sla_deadline": "1h 12m remaining",
+                "status": "PENDING_CHECKER",
+                "maker_status": safe_json_dumps({
+                    "decision": "RECOMMEND_REJECT",
+                    "summary": "Virtual digital asset arbitrage funnel. Sudden liquidity offramp with zero historical cryptocurrency activity.",
+                    "officer": "Rohan Verma (AML-33012)",
+                    "username": "analyst.verma"
+                }),
+                "findings": safe_json_dumps([
+                    {"agent": "TransactionInvestigator", "risk_level": "HIGH", "score_delta": 0.45, "details": "INR 1,850,000 sent to unlinked VDA custodial wallet exchange in British Virgin Islands."},
+                    {"agent": "CustomerRiskAnalyst", "risk_level": "HIGH", "score_delta": 0.35, "details": "Velocity deviation of 30.83x against customer monthly turnover."}
+                ]),
+                "retrieved_policies": safe_json_dumps([
+                    {"document_title": "Master Direction - Know Your Customer (KYC) Direction, 2016", "citation": "RBI Section 43", "section": "Section 43 - Virtual Digital Assets", "snippet": "Banks must carry out customer due diligence processes for transactions in virtual digital assets in line with PML Rules and FATF Recommendation 15."}
+                ])
+            }
+        ]
+        for sc in SEED_CASES:
+            conn.execute(text("""
+                INSERT INTO compliance_cases (
+                    case_id, transaction_id, customer_name, beneficiary_name, 
+                    amount, channel, historical_avg, risk_score, priority, 
+                    sla_deadline, status, maker_status, findings, retrieved_policies
+                ) VALUES (
+                    :case_id, :transaction_id, :customer_name, :beneficiary_name, 
+                    :amount, :channel, :historical_avg, :risk_score, :priority, 
+                    :sla_deadline, :status, CAST(:maker_status AS jsonb), CAST(:findings AS jsonb), CAST(:retrieved_policies AS jsonb)
+                ) ON CONFLICT (case_id) DO NOTHING;
+            """), sc)
+
 def init_case_management_db():
     try:
         with engine.begin() as conn:
@@ -130,7 +237,7 @@ def init_case_management_db():
                     risk_score NUMERIC(5, 2) NOT NULL,
                     priority VARCHAR(16) DEFAULT 'P1 - CRITICAL',
                     sla_deadline VARCHAR(64) DEFAULT '45m remaining',
-                    status VARCHAR(32) NOT NULL, -- PENDING_MAKER | PENDING_CHECKER | FINALIZED
+                    status VARCHAR(32) NOT NULL,
                     maker_status JSONB,
                     checker_status JSONB,
                     final_verdict VARCHAR(64),
@@ -142,76 +249,7 @@ def init_case_management_db():
                 );
                 CREATE INDEX IF NOT EXISTS idx_cases_status ON compliance_cases(status);
             """))
-
-            count = conn.execute(text("SELECT COUNT(*) FROM compliance_cases;")).scalar()
-            if count == 0:
-                SEED_CASES = [
-                    {
-                        "case_id": "CASE-99214A",
-                        "transaction_id": "TXN-1049281",
-                        "customer_name": "Aarav Malhotra",
-                        "beneficiary_name": "Panama Horizon Shell Corp",
-                        "amount": 1450000.00,
-                        "channel": "SWIFT",
-                        "historical_avg": 45000.00,
-                        "risk_score": 1.00,
-                        "priority": "P1 - CRITICAL",
-                        "sla_deadline": "28m remaining",
-                        "status": "PENDING_CHECKER",
-                        "maker_status": json.dumps({
-                            "decision": "RECOMMEND_REJECT",
-                            "summary": "First-time transfer to offshore shell company. 32.2x velocity spike exceeds statutory risk ceilings.",
-                            "officer": "Rohan Verma (AML-33012)",
-                            "username": "analyst.verma"
-                        }),
-                        "findings": json.dumps([
-                            {"agent": "TransactionInvestigator", "risk_level": "HIGH", "score_delta": 0.45, "details": "High-risk transfer: INR 1,450,000 sent to first-time beneficiary 'Panama Horizon Shell Corp' via SWIFT cross-border corridor."},
-                            {"agent": "CustomerRiskAnalyst", "risk_level": "HIGH", "score_delta": 0.35, "details": "Critical velocity spike: 32.22x deviation over 30-day baseline average (INR 45,000)."},
-                            {"agent": "CustomerRiskAnalyst", "risk_level": "HIGH", "score_delta": 0.40, "details": "Entity watchlist hit: Beneficiary matched high-risk offshore shell jurisdiction index."}
-                        ]),
-                        "retrieved_policies": json.dumps([
-                            {"document_title": "Master Direction - Know Your Customer (KYC) Direction, 2016", "citation": "RBI Section 41", "section": "Section 41 - Enhanced Due Diligence", "snippet": "Regulated Entities shall apply Enhanced Due Diligence measures to high-risk accounts and cross-border transfers involving unverified offshore corporate structures."}
-                        ])
-                    },
-                    {
-                        "case_id": "CASE-88310B",
-                        "transaction_id": "TXN-1082914",
-                        "customer_name": "Vikram Singhania",
-                        "beneficiary_name": "KoinX BVI Crypto Exchange",
-                        "amount": 1850000.00,
-                        "channel": "RTGS",
-                        "historical_avg": 60000.00,
-                        "risk_score": 1.00,
-                        "priority": "P1 - CRITICAL",
-                        "sla_deadline": "1h 12m remaining",
-                        "status": "PENDING_CHECKER",
-                        "maker_status": json.dumps({
-                            "decision": "RECOMMEND_REJECT",
-                            "summary": "Virtual digital asset arbitrage funnel. Sudden liquidity offramp with zero historical cryptocurrency activity.",
-                            "officer": "Rohan Verma (AML-33012)",
-                            "username": "analyst.verma"
-                        }),
-                        "findings": json.dumps([
-                            {"agent": "TransactionInvestigator", "risk_level": "HIGH", "score_delta": 0.45, "details": "INR 1,850,000 sent to unlinked VDA custodial wallet exchange in British Virgin Islands."},
-                            {"agent": "CustomerRiskAnalyst", "risk_level": "HIGH", "score_delta": 0.35, "details": "Velocity deviation of 30.83x against customer monthly turnover."}
-                        ]),
-                        "retrieved_policies": json.dumps([
-                            {"document_title": "Master Direction - Know Your Customer (KYC) Direction, 2016", "citation": "RBI Section 43", "section": "Section 43 - Virtual Digital Assets", "snippet": "Banks must carry out customer due diligence processes for transactions in virtual digital assets in line with PML Rules and FATF Recommendation 15."}
-                        ])
-                    }
-                ]
-                for sc in SEED_CASES:
-                    conn.execute(text("""
-                        INSERT INTO compliance_cases (
-                            case_id, transaction_id, customer_name, beneficiary_name, 
-                            amount, channel, historical_avg, risk_score, priority, 
-                            sla_deadline, status, maker_status, findings, retrieved_policies
-                        ) VALUES (
-                            :case_id, :transaction_id, :customer_name, :beneficiary_name, 
-                            :amount, :channel, :historical_avg, :risk_score, :priority, 
-                            :sla_deadline, :status, CAST(:maker_status AS jsonb), CAST(:findings AS jsonb), CAST(:retrieved_policies AS jsonb)
-                        );
-                    """), sc)
+            seed_enterprise_cases_if_empty(conn)
     except Exception as e:
         print(f"[Case DB Setup Warning] {e}")
 
@@ -312,128 +350,102 @@ async def get_audit_logs(request: Request):
         ).mappings().all()
     return [dict(r) for r in rows]
 
-# Format case row helper
-def format_case_row(row_dict: Dict[str, Any]) -> Dict[str, Any]:
-    status_str = row_dict["status"]
-    is_maker = status_str == "PENDING_MAKER"
-    is_checker = status_str == "PENDING_CHECKER"
-    return {
-        "case_id": row_dict["case_id"],
-        "transaction_id": row_dict["transaction_id"],
-        "customer_name": row_dict["customer_name"],
-        "beneficiary_name": row_dict["beneficiary_name"],
-        "amount": float(row_dict["amount"]),
-        "channel": row_dict["channel"],
-        "historical_avg": float(row_dict["historical_avg"]),
-        "risk_score": float(row_dict["risk_score"]),
-        "priority": row_dict.get("priority", "P1 - CRITICAL"),
-        "sla_deadline": row_dict.get("sla_deadline", "45m remaining"),
-        "status": status_str,
-        "requires_maker_review": is_maker,
-        "requires_checker_review": is_checker,
-        "final_verdict": row_dict.get("final_verdict"),
-        "maker_status": safe_dict(row_dict.get("maker_status")),
-        "checker_status": safe_dict(row_dict.get("checker_status")),
-        "findings": safe_list(row_dict.get("findings")),
-        "retrieved_policies": safe_list(row_dict.get("retrieved_policies")),
-        "execution_trace": safe_list(row_dict.get("execution_trace")),
-        "transaction_data": {
-            "transaction_id": row_dict["transaction_id"],
-            "customer_name": row_dict["customer_name"],
-            "beneficiary_name": row_dict["beneficiary_name"],
-            "amount": float(row_dict["amount"]),
-            "channel": row_dict["channel"],
-            "historical_avg": float(row_dict["historical_avg"])
-        }
-    }
-
-# 3. Queue Management
+# 3. Queue Management with self-healing auto-seed
 @router.get("/investigations/queue")
 async def get_compliance_queue(request: Request, status_filter: Optional[str] = None):
     _ = get_current_user(request)
-    query = "SELECT * FROM compliance_cases"
-    params = {}
-    if status_filter:
-        query += " WHERE status = :st"
-        params["st"] = status_filter
-    query += " ORDER BY created_at DESC LIMIT 50;"
+    try:
+        with engine.begin() as conn:
+            seed_enterprise_cases_if_empty(conn)
+            
+            query = "SELECT * FROM compliance_cases"
+            params = {}
+            if status_filter:
+                query += " WHERE status = :st"
+                params["st"] = status_filter
+            query += " ORDER BY created_at DESC LIMIT 50;"
 
-    with engine.connect() as conn:
-        rows = conn.execute(text(query), params).mappings().all()
+            rows = conn.execute(text(query), params).mappings().all()
+        return [format_case_row(dict(r)) for r in rows]
+    except Exception as e:
+        print(f"[Queue fetch warning] {e}")
+        raise HTTPException(status_code=500, detail="Database reconnecting. Please retry.")
 
-    return [format_case_row(dict(r)) for r in rows]
-
-# Ingest Stream Simulation
+# Stream Ingestion with Fallback
 @router.post("/investigations/queue/ingest-stream")
 async def ingest_core_banking_stream(request: Request):
     _ = require_role(["MLRO_OFFICER", "ANALYST"])(request)
-    with engine.connect() as conn:
-        row = conn.execute(text("""
-            SELECT * FROM transactions 
-            WHERE amount > 500000 
-            ORDER BY RANDOM() 
-            LIMIT 1;
-        """)).mappings().first()
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(text("""
+                SELECT * FROM transactions 
+                WHERE amount > 500000 
+                ORDER BY RANDOM() 
+                LIMIT 1;
+            """)).mappings().first()
 
-    if not row:
-        txn = {
-            "transaction_id": f"TXN-{random.randint(1000000, 9999999)}",
-            "customer_name": "Alok Chandrashekhar",
-            "beneficiary_name": "Seychelles Prime Shell Holdings",
-            "amount": 2100000.0,
-            "channel": "SWIFT",
-            "historical_avg": 50000.0
+        if not row:
+            txn = {
+                "transaction_id": f"TXN-{random.randint(1000000, 9999999)}",
+                "customer_name": "Alok Chandrashekhar",
+                "beneficiary_name": "Seychelles Prime Shell Holdings",
+                "amount": 2100000.0,
+                "channel": "SWIFT",
+                "historical_avg": 50000.0
+            }
+        else:
+            txn = dict(row)
+
+        case_id = f"CASE-{uuid.uuid4().hex[:6].upper()}"
+        ratio = round(float(txn["amount"]) / max(float(txn["historical_avg"]), 1.0), 1)
+
+        new_case = {
+            "case_id": case_id,
+            "transaction_id": txn["transaction_id"],
+            "customer_name": txn["customer_name"],
+            "beneficiary_name": txn["beneficiary_name"],
+            "amount": float(txn["amount"]),
+            "channel": txn["channel"],
+            "historical_avg": float(txn["historical_avg"]),
+            "risk_score": 1.00 if ratio > 15.0 else 0.85,
+            "priority": "P1 - CRITICAL",
+            "sla_deadline": f"{random.randint(15, 55)}m remaining",
+            "status": "PENDING_CHECKER",
+            "maker_status": safe_json_dumps({
+                "decision": "RECOMMEND_REJECT",
+                "summary": f"Inbound core banking stream anomaly alert. {ratio}x turnover velocity spike sent to unverified offshore entity.",
+                "officer": "Rohan Verma (AML-33012)",
+                "username": "analyst.verma"
+            }),
+            "findings": safe_json_dumps([
+                {"agent": "TransactionInvestigator", "risk_level": "HIGH", "score_delta": 0.45, "details": f"Core-banking high value alert: INR {float(txn['amount']):,.2f} routed via {txn['channel']}."},
+                {"agent": "CustomerRiskAnalyst", "risk_level": "HIGH", "score_delta": 0.35, "details": f"Velocity multiplier calculated at {ratio}x above 30-day customer historical average."}
+            ]),
+            "retrieved_policies": safe_json_dumps([
+                {"document_title": "Master Direction - Know Your Customer (KYC) Direction, 2016", "citation": "RBI Section 41", "section": "Section 41", "snippet": "Mandatory Enhanced Due Diligence required for accounts showing disproportionate velocity spikes."}
+            ])
         }
-    else:
-        txn = dict(row)
 
-    case_id = f"CASE-{uuid.uuid4().hex[:6].upper()}"
-    ratio = round(float(txn["amount"]) / max(float(txn["historical_avg"]), 1.0), 1)
+        with engine.begin() as conn:
+            conn.execute(text("""
+                INSERT INTO compliance_cases (
+                    case_id, transaction_id, customer_name, beneficiary_name, 
+                    amount, channel, historical_avg, risk_score, priority, 
+                    sla_deadline, status, maker_status, findings, retrieved_policies
+                ) VALUES (
+                    :case_id, :transaction_id, :customer_name, :beneficiary_name, 
+                    :amount, :channel, :historical_avg, :risk_score, :priority, 
+                    :sla_deadline, :status, CAST(:maker_status AS jsonb), CAST(:findings AS jsonb), CAST(:retrieved_policies AS jsonb)
+                );
+            """), new_case)
 
-    new_case = {
-        "case_id": case_id,
-        "transaction_id": txn["transaction_id"],
-        "customer_name": txn["customer_name"],
-        "beneficiary_name": txn["beneficiary_name"],
-        "amount": float(txn["amount"]),
-        "channel": txn["channel"],
-        "historical_avg": float(txn["historical_avg"]),
-        "risk_score": 1.00 if ratio > 15.0 else 0.85,
-        "priority": "P1 - CRITICAL",
-        "sla_deadline": f"{random.randint(15, 55)}m remaining",
-        "status": "PENDING_CHECKER",
-        "maker_status": json.dumps({
-            "decision": "RECOMMEND_REJECT",
-            "summary": f"Inbound core banking stream anomaly alert. {ratio}x turnover velocity spike sent to unverified offshore entity.",
-            "officer": "Rohan Verma (AML-33012)",
-            "username": "analyst.verma"
-        }),
-        "findings": json.dumps([
-            {"agent": "TransactionInvestigator", "risk_level": "HIGH", "score_delta": 0.45, "details": f"Core-banking high value alert: INR {float(txn['amount']):,.2f} routed via {txn['channel']}."},
-            {"agent": "CustomerRiskAnalyst", "risk_level": "HIGH", "score_delta": 0.35, "details": f"Velocity multiplier calculated at {ratio}x above 30-day customer historical average."}
-        ]),
-        "retrieved_policies": json.dumps([
-            {"document_title": "Master Direction - Know Your Customer (KYC) Direction, 2016", "citation": "RBI Section 41", "section": "Section 41", "snippet": "Mandatory Enhanced Due Diligence required for accounts showing disproportionate velocity spikes."}
-        ])
-    }
+        log_security_event("STREAM_ANOMALY_INGESTED", details=f"New alert {case_id} ingested into MLRO queue.")
+        return {"status": "SUCCESS", "case_id": case_id, "amount": txn["amount"]}
+    except Exception as e:
+        print(f"[Ingest stream error] {e}")
+        raise HTTPException(status_code=500, detail=f"Database connection error: {str(e)}")
 
-    with engine.begin() as conn:
-        conn.execute(text("""
-            INSERT INTO compliance_cases (
-                case_id, transaction_id, customer_name, beneficiary_name, 
-                amount, channel, historical_avg, risk_score, priority, 
-                sla_deadline, status, maker_status, findings, retrieved_policies
-            ) VALUES (
-                :case_id, :transaction_id, :customer_name, :beneficiary_name, 
-                :amount, :channel, :historical_avg, :risk_score, :priority, 
-                :sla_deadline, :status, CAST(:maker_status AS jsonb), CAST(:findings AS jsonb), CAST(:retrieved_policies AS jsonb)
-            );
-        """), new_case)
-
-    log_security_event("STREAM_ANOMALY_INGESTED", details=f"New alert {case_id} ingested into MLRO queue.")
-    return {"status": "SUCCESS", "case_id": case_id, "amount": txn["amount"]}
-
-# 4. Checker Adjudication Execution (Guaranteed to return updated case)
+# 4. Checker Adjudication Execution
 @router.post("/investigations/{case_id}/checker-execute")
 async def checker_execute(case_id: str, payload: CheckerExecutionPayload, request: Request):
     checker = require_role(["MLRO_OFFICER"])(request)
@@ -487,7 +499,6 @@ async def checker_execute(case_id: str, payload: CheckerExecutionPayload, reques
             "cid": case_id
         })
 
-    # Fetch updated row to return complete record
     with engine.connect() as conn:
         updated_row = conn.execute(text("SELECT * FROM compliance_cases WHERE case_id = :cid;"), {"cid": case_id}).mappings().first()
 
@@ -543,7 +554,6 @@ async def simulate_investigation(payload: TransactionCreatePayload, request: Req
     trace = [f"Case {case_id} registered by Officer {user.full_name} ({user.badge_id})"]
     risk = 0.0
 
-    # Run compiled workflow if available
     if hasattr(request.app.state, "workflow") and request.app.state.workflow is not None:
         try:
             config = {"configurable": {"thread_id": case_id}}
@@ -575,7 +585,6 @@ async def simulate_investigation(payload: TransactionCreatePayload, request: Req
         except Exception as e:
             print(f"[Workflow exec note] {e}")
 
-    # Fallback deterministic calculation if workflow returned clean
     if not findings:
         ratio = float(registered["amount"]) / max(float(registered["historical_avg"]), 1.0)
         if ratio >= 10.0 or registered["amount"] >= 500000:
