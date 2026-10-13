@@ -60,3 +60,8 @@ def create_compliance_graph():
     builder.add_edge("human_approval_node", END)
     
     return builder
+
+from langgraph.checkpoint.memory import MemorySaver
+
+# Default compiled workflow application with memory checkpointer
+app = create_compliance_graph().compile(checkpointer=MemorySaver())

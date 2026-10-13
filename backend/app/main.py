@@ -1,86 +1,42 @@
 import os
-import traceback
-from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from langgraph.checkpoint.memory import MemorySaver
-from sqlalchemy import text
-from dotenv import load_dotenv
-
-from app.graph.workflow import create_compliance_graph
-from app.models.entities import Base
-from app.models.rag_entities import RegulatoryDocumentChunk
-from app.database import engine
-from app.api.routes import router as api_router
-
-load_dotenv()
-
-app_state = {}
+from contextlib import asynccontextmanager
+from app.api.routes import router
+from app.graph.workflow import app as compiled_graph
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 1. Initialize Tables & Vector extension
-    try:
-        with engine.begin() as conn:
-            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
-            Base.metadata.create_all(conn)
-    except Exception as e:
-        print(f"[FinSight Init Warning] Database schema check: {e}")
-
-    # 2. Try PostgreSQL Checkpointer, fallback to robust MemorySaver
-    checkpointer = None
-    pool = None
-    try:
-        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-        from psycopg_pool import AsyncConnectionPool
-        
-        DB_URI = os.getenv("DATABASE_CHECKPOINT_URL", "postgresql://postgres:password@postgres:5432/finsight")
-        pool = AsyncConnectionPool(conninfo=DB_URI, max_size=10, kwargs={"autocommit": True}, open=False)
-        await pool.open()
-        
-        conn = await pool.getconn()
-        checkpointer = AsyncPostgresSaver(conn)
-        await checkpointer.setup()
-        app_state["pool"] = pool
-        print("[FinSight Init] PostgreSQL Checkpointer successfully initialized.")
-    except Exception as err:
-        if pool:
-            try:
-                await pool.close()
-            except Exception:
-                pass
-        print(f"[FinSight Init Fallback] Postgres checkpointer error: {err}. Using MemorySaver.")
-        checkpointer = MemorySaver()
-
-    compiled_workflow = create_compliance_graph().compile(checkpointer=checkpointer)
-    
-    app.state.workflow = compiled_workflow
-    app.state.checkpointer = checkpointer
-    app_state["workflow"] = compiled_workflow
-    app_state["checkpointer"] = checkpointer
-
+    app.state.workflow = compiled_graph
     yield
 
-    # Clean shutdown
-    if "pool" in app_state:
-        await app_state["pool"].close()
-
 app = FastAPI(
-    title="FinSight AI — Compliance Platform",
-    version="2.4.0",
+    title="FinSight AI Compliance API",
+    version="2.0.0",
+    description="Enterprise Multi-Agent AML Regulatory Intelligence & Four-Eyes Governance",
     lifespan=lifespan
 )
 
+# Allow credentials for localhost and production cloud subdomains
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+# Allow any onrender.com frontend domain dynamically
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://.*\.onrender\.com",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(api_router)
+app.include_router(router)
 
-@app.get("/health")
+@app.get("/health", tags=["Telemetry"])
 async def health_check():
-    return {"status": "HEALTHY", "service": "finsight-api"}
+    return {"status": "HEALTHY", "system": "FinSight AI Enterprise Engine"}
