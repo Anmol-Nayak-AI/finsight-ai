@@ -28,10 +28,15 @@ import {
   Check, 
   Archive, 
   Clock, 
-  Radio,
   Activity,
   Database,
-  FileText
+  FileText,
+  BookOpen,
+  Terminal,
+  FileCheck,
+  Dices,
+  Radio,
+  Cpu
 } from 'lucide-react';
 
 export default function App() {
@@ -78,7 +83,7 @@ export default function App() {
   const [officerList, setOfficerList] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
 
-  // Maker Investigation Workspace
+  // Maker Investigation Workspace States
   const [formData, setFormData] = useState({
     transaction_id: 'TXN-1002491',
     customer_name: 'Aarav Malhotra',
@@ -92,6 +97,7 @@ export default function App() {
 
   const [loading, setLoading] = useState(false);
   const [caseData, setCaseData] = useState(null);
+  const [activeTab, setActiveTab] = useState('findings');
 
   // Adjudication Dialogs
   const [makerModalOpen, setMakerModalOpen] = useState(false);
@@ -280,6 +286,34 @@ export default function App() {
     setTimeout(() => setCopiedSeed(false), 2000);
   };
 
+  // Dynamic Synthesis Engine
+  const generateRandomSimulation = () => {
+    const randomTxn = `TXN-${Math.floor(1000000 + Math.random() * 900000)}`;
+    const originator = ["Aarav Malhotra", "Vikram Singhania", "Nexa Cloud Tech", "TechFab Solutions"][Math.floor(Math.random() * 4)];
+    const benList = [
+      { name: "Panama Horizon Shell Corp", isNew: true },
+      { name: "Kiran Global Hardware", isNew: false },
+      { name: "KoinX BVI Crypto Exchange", isNew: true },
+      { name: "Apex Shell Logistics Ltd", isNew: true }
+    ];
+    const benObj = benList[Math.floor(Math.random() * benList.length)];
+    const ch = ["IMPS", "NEFT", "RTGS", "UPI", "SWIFT"][Math.floor(Math.random() * 5)];
+    const isHigh = Math.random() > 0.4;
+    const amount = isHigh ? Math.floor(450000 + Math.random() * 1800000) : Math.floor(2500 + Math.random() * 35000);
+    const baseline = isHigh && Math.random() > 0.5 ? Math.floor(20000 + Math.random() * 40000) : Math.floor(50000 + Math.random() * 180000);
+
+    setFormData({
+      transaction_id: randomTxn,
+      customer_name: originator,
+      amount: amount,
+      historical_avg: baseline,
+      channel: ch,
+      beneficiary_name: benObj.name,
+      beneficiary_is_new: benObj.isNew,
+      narration: "Commercial Retainer Settlement"
+    });
+  };
+
   // Maker: Trigger Audit
   const handleSimulate = async () => {
     setLoading(true);
@@ -339,7 +373,7 @@ export default function App() {
     }
   };
 
-  // Checker: Execute Statutory Ruling (Direct Execution)
+  // Checker: Execute Statutory Ruling
   const handleCheckerExecute = async () => {
     if (!selectedCase?.case_id) return;
     setExecutingRuling(true);
@@ -395,7 +429,7 @@ export default function App() {
   const displayedCases = inboxTab === 'pending' ? pendingCases : finalizedCases;
 
   // ==========================================
-  // AUTHENTICATION VIEW
+  // AUTHENTICATION SCREEN: INSTITUTIONAL GATEWAY
   // ==========================================
   if (!currentUser) {
     return (
@@ -1035,7 +1069,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Statutory Adjudication Controls (Directly available for any pending case) */}
+                    {/* Statutory Adjudication Controls */}
                     {selectedCase.status === 'FINALIZED' ? (
                       <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-800 text-emerald-300 text-xs flex items-center justify-between shadow-lg">
                         <div className="space-y-1">
@@ -1113,23 +1147,33 @@ export default function App() {
           </div>
         ) : (
           /* =========================================================================
-              MAKER VIEW: ANALYST INVESTIGATION & TRIAGE DESK
+              MAKER VIEW: FULL INSTITUTIONAL ANALYST WORKBENCH (RESTORED)
              ========================================================================= */
           <div className="space-y-6">
             
-            <section className="bg-[#0c1427] border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden">
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-5 pb-4 border-b border-slate-800">
+            {/* 1. Transaction Injection & Simulation Deck */}
+            <section className="bg-gradient-to-b from-[#0c1427] to-[#091020] border border-slate-800 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-5 pb-4 border-b border-slate-800/80">
                 <div>
                   <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400 font-mono">
                     <Sliders className="w-4 h-4 text-indigo-400" />
-                    <span>Analyst Investigation & Anomaly Profiling Desk</span>
+                    <span>Transaction Injection & Counterparty Profiler</span>
                   </div>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Input transaction parameters and trigger multi-agent investigation.
+                    Configure transaction attributes or synthesize synthetic anomalies across the 1,000,000-record core banking ledger.
                   </p>
                 </div>
+
+                <button
+                  onClick={generateRandomSimulation}
+                  className="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-500/30 transition cursor-pointer flex items-center gap-2 font-mono shadow-sm"
+                >
+                  <Dices className="w-4 h-4 text-indigo-400" />
+                  <span>Synthesize Dynamic Record</span>
+                </button>
               </div>
 
+              {/* Form Grid */}
               <div className="grid grid-cols-1 md:grid-cols-12 gap-5 text-xs">
                 <div className="md:col-span-3 space-y-1.5">
                   <label className="text-slate-400 font-medium flex items-center gap-1.5">
@@ -1162,7 +1206,7 @@ export default function App() {
                   <select
                     value={formData.channel}
                     onChange={(e) => setFormData({ ...formData, channel: e.target.value })}
-                    className="w-full bg-[#080f1d] border border-slate-700 rounded-xl px-3.5 py-2.5 text-slate-200 font-mono focus:outline-none focus:border-indigo-500 transition font-medium"
+                    className="w-full bg-[#080f1d] border border-slate-700 rounded-xl px-3 py-2.5 text-slate-200 font-mono focus:outline-none focus:border-indigo-500 transition font-medium"
                   >
                     <option value="IMPS">IMPS (Immediate Transfer)</option>
                     <option value="NEFT">NEFT (Batch Settlement)</option>
@@ -1191,6 +1235,7 @@ export default function App() {
                   </button>
                 </div>
 
+                {/* Amount and Baseline Sliders */}
                 <div className="md:col-span-6 bg-[#080f1d] p-4 rounded-xl border border-slate-800 space-y-2.5">
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-slate-400 font-medium">Transaction Amount</span>
@@ -1230,6 +1275,7 @@ export default function App() {
                   />
                 </div>
 
+                {/* Purpose Memo & Action Button */}
                 <div className="md:col-span-9 space-y-1.5">
                   <label className="text-slate-400 font-medium">Payment Narration / Purpose Memo</label>
                   <input
@@ -1253,7 +1299,7 @@ export default function App() {
               </div>
             </section>
 
-            {/* Maker Banner */}
+            {/* 2. Interactive Status Banners */}
             {caseData && (
               <div>
                 {caseData.status === 'PENDING_MAKER' ? (
@@ -1267,7 +1313,7 @@ export default function App() {
                           STAGE 1: AWAITING ANALYST RECOMMENDATION (MAKER STEP)
                         </h4>
                         <p className="text-xs text-amber-200/80 font-mono mt-0.5">
-                          Risk Score: <span className="font-bold">{riskPercent}%</span> &bull; Exceeded 70% threshold. Record findings and transmit to MLRO.
+                          Risk Score: <span className="font-bold">{riskPercent}%</span> &bull; Exceeded statutory threshold. Record findings and transmit to MLRO.
                         </p>
                       </div>
                     </div>
@@ -1291,7 +1337,7 @@ export default function App() {
                           STAGE 2: CASE TRANSMITTED TO MLRO CHECKER INBOX
                         </h4>
                         <p className="text-xs text-cyan-200/80 font-mono mt-0.5">
-                          Recommendation submitted: <strong>{caseData.maker_status?.decision}</strong>. Awaiting MLRO executive ruling.
+                          Recommendation submitted: <strong>{caseData.maker_status?.decision}</strong>. Case suspended pending executive sign-off.
                         </p>
                       </div>
                     </div>
@@ -1311,7 +1357,7 @@ export default function App() {
                           TRANSACTION CLEARED BY AUTONOMOUS POLICY ENGINE
                         </h4>
                         <p className="text-xs opacity-80 font-mono mt-0.5">
-                          Risk Score: {riskPercent}% &bull; Below 70% threshold &bull; Cleared
+                          Risk Score: {riskPercent}% &bull; Below 70% threshold &bull; Cleared on Core Ledger
                         </p>
                       </div>
                     </div>
@@ -1323,57 +1369,234 @@ export default function App() {
               </div>
             )}
 
-            {/* Evidence & Telemetry */}
+            {/* 3. Comprehensive Telemetry & 4-Tab Evidence Intelligence Console */}
             <div className="grid grid-cols-12 gap-6">
-              <div className="col-span-12 lg:col-span-4 bg-[#0c1427] border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 font-mono">
-                    <TrendingUp className="w-4 h-4 text-indigo-400" /> Risk Index
-                  </span>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 text-amber-400 font-bold border border-slate-800">
-                    Gate: 70%
-                  </span>
+              
+              {/* Left Column: Risk Index + Active State Machine Pipeline */}
+              <div className="col-span-12 lg:col-span-4 space-y-6">
+                
+                {/* Risk Gauge Card */}
+                <div className="bg-[#0c1427] border border-slate-800 rounded-2xl p-5 shadow-xl">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 font-mono">
+                      <TrendingUp className="w-4 h-4 text-indigo-400" /> Cumulative Risk Index
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 text-amber-400 font-bold border border-slate-800">
+                      HITL Gate: 70%
+                    </span>
+                  </div>
+
+                  <div className="flex items-baseline justify-between mb-3">
+                    <span className="text-4xl font-mono font-extrabold text-white">
+                      {riskPercent !== null ? `${riskPercent}%` : '--'}
+                    </span>
+                    <span className="text-xs font-mono font-semibold uppercase">
+                      {riskPercent >= 70 ? (
+                        <span className="text-rose-400 bg-rose-950/40 border border-rose-800 px-2 py-1 rounded">Critical AML Anomaly</span>
+                      ) : riskPercent >= 35 ? (
+                        <span className="text-amber-400 bg-amber-950/40 border border-amber-800 px-2 py-1 rounded">Moderate Commercial</span>
+                      ) : riskPercent !== null ? (
+                        <span className="text-emerald-400 bg-emerald-950/40 border border-emerald-800 px-2 py-1 rounded">Within Policy Limits</span>
+                      ) : (
+                        <span className="text-slate-500">Standby</span>
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="w-full bg-[#080f1d] h-3 rounded-full overflow-hidden p-0.5 border border-slate-800">
+                    <div 
+                      className={`h-full rounded-full transition-all duration-700 ease-out ${
+                        riskPercent >= 70 ? 'bg-gradient-to-r from-amber-500 to-rose-500' : 'bg-gradient-to-r from-cyan-500 to-emerald-500'
+                      }`}
+                      style={{ width: `${riskPercent || 0}%` }}
+                    />
+                  </div>
+
+                  <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono mt-2">
+                    <span>0.00 Clean</span>
+                    <span className="text-amber-400 font-semibold">0.70 Boundary</span>
+                    <span>1.00 Critical</span>
+                  </div>
                 </div>
 
-                <div className="flex items-baseline justify-between">
-                  <span className="text-4xl font-mono font-extrabold text-white">
-                    {riskPercent !== null ? `${riskPercent}%` : '--'}
-                  </span>
-                  <span className="text-xs font-mono font-semibold uppercase">
-                    {riskPercent >= 70 ? 'Critical Anomaly' : (riskPercent >= 35 ? 'Moderate' : 'Low')}
-                  </span>
+                {/* Active Multi-Agent State Machine Nodes */}
+                <div className="bg-[#0c1427] border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 font-mono">
+                      <Activity className="w-4 h-4 text-indigo-400" /> Active Investigation Nodes
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800">
+                      State Machine
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 text-xs font-mono">
+                    {[
+                      { name: "Transaction Investigator", action: "Ledger Volume & Relationship", active: Boolean(caseData) },
+                      { name: "Customer Risk Analyst", action: "Velocity Profiler & Sanctions", active: Boolean(caseData) },
+                      { name: "Regulatory Researcher", action: "Statutory Law Retrieval", active: Boolean(caseData) },
+                      { name: "Compliance Evaluator", action: "Synthesis & HITL Gate", active: Boolean(caseData) },
+                    ].map((node, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-2.5 rounded-xl bg-[#080f1d] border border-slate-800">
+                        <div className="flex items-center gap-2.5">
+                          <div className={`w-2.5 h-2.5 rounded-full ${node.active ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50' : 'bg-slate-700'}`} />
+                          <span className="text-slate-200 font-medium">{node.name}</span>
+                        </div>
+                        <span className="text-[10px] text-slate-500">{node.action}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
-                <div className="w-full bg-[#080f1d] h-2.5 rounded-full overflow-hidden border border-slate-800">
-                  <div 
-                    className={`h-full rounded-full ${riskPercent >= 70 ? 'bg-rose-500' : 'bg-emerald-500'}`}
-                    style={{ width: `${riskPercent || 0}%` }}
-                  />
-                </div>
               </div>
 
-              <div className="col-span-12 lg:col-span-8 bg-[#0c1427] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-3">
-                <h4 className="text-xs font-mono font-semibold text-slate-400 uppercase tracking-wider">
-                  Investigative Evidence & Findings ({caseData?.findings?.length || 0})
-                </h4>
-                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-                  {caseData?.findings?.length > 0 ? (
-                    caseData.findings.map((f, i) => (
-                      <div key={i} className="p-3 rounded-xl bg-[#080f1d] border border-slate-800 text-xs space-y-1">
-                        <div className="flex items-center justify-between font-mono">
-                          <span className="text-indigo-400 font-bold">{f.agent}</span>
-                          <span className="text-cyan-400 font-bold">+{f.score_delta.toFixed(2)} Delta</span>
+              {/* Right Column: 4-Tab Evidence Intelligence Console */}
+              <div className="col-span-12 lg:col-span-8 bg-[#0c1427] border border-slate-800 rounded-2xl shadow-xl flex flex-col overflow-hidden">
+                
+                {/* Tabs Bar */}
+                <div className="flex items-center justify-between border-b border-slate-800 px-6 pt-3 bg-[#090f1d]">
+                  <div className="flex gap-2">
+                    {[
+                      { id: 'findings', label: 'Agent Findings & Evidence', icon: FileText, count: caseData?.findings?.length },
+                      { id: 'citations', label: 'Statutory Citations (RRF)', icon: BookOpen, count: caseData?.retrieved_policies?.length },
+                      { id: 'trace', label: 'State Transition Trace', icon: Terminal, count: caseData?.execution_trace?.length },
+                      { id: 'audit_pack', label: 'Compliance Dossier', icon: FileCheck },
+                    ].map((tab) => {
+                      const Icon = tab.icon;
+                      return (
+                        <button
+                          key={tab.id}
+                          onClick={() => setActiveTab(tab.id)}
+                          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold border-b-2 transition cursor-pointer ${
+                            activeTab === tab.id
+                              ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
+                              : 'border-transparent text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          <Icon className="w-3.5 h-3.5" />
+                          <span>{tab.label}</span>
+                          {tab.count !== undefined && (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-800 font-mono text-slate-300">
+                              {tab.count}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Tab Content Panels */}
+                <div className="p-6 flex-1 overflow-y-auto max-h-[580px]">
+                  
+                  {/* Tab 1: Findings */}
+                  {activeTab === 'findings' && (
+                    <div className="space-y-3.5">
+                      {caseData?.findings && caseData.findings.length > 0 ? (
+                        caseData.findings.map((f, i) => (
+                          <div key={i} className="bg-[#080f1d] border border-slate-800 rounded-xl p-4 text-xs space-y-2.5 transition hover:border-slate-700">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-bold text-indigo-400">{f.agent}</span>
+                                <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded uppercase ${
+                                  f.risk_level === 'HIGH' 
+                                    ? 'bg-rose-950 text-rose-400 border border-rose-800' 
+                                    : (f.risk_level === 'MEDIUM' ? 'bg-amber-950 text-amber-400 border border-amber-800' : 'bg-emerald-950 text-emerald-400 border border-emerald-800')
+                                }`}>
+                                  {f.risk_level} SEVERITY
+                                </span>
+                              </div>
+                              <span className="font-mono text-slate-300 font-bold bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800 text-[11px]">
+                                +{f.score_delta.toFixed(2)} Risk Delta
+                              </span>
+                            </div>
+                            <p className="text-slate-300 leading-relaxed font-sans">{f.details}</p>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="py-20 text-center text-slate-500 text-xs italic">
+                          Configure parameters above and click "Trigger Multi-Agent Audit".
                         </div>
-                        <p className="text-slate-300 text-[11px]">{f.details}</p>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="py-12 text-center text-slate-500 text-xs italic">
-                      Configure parameters and click "Trigger Multi-Agent Audit".
+                      )}
                     </div>
                   )}
+
+                  {/* Tab 2: Statutory Citations (pgvector RRF) */}
+                  {activeTab === 'citations' && (
+                    <div className="space-y-4">
+                      {caseData?.retrieved_policies && caseData.retrieved_policies.length > 0 ? (
+                        caseData.retrieved_policies.map((p, idx) => (
+                          <div key={idx} className="bg-[#080f1d] border border-slate-800 rounded-xl p-4 text-xs space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-slate-200 text-sm">{p.document_title}</span>
+                              <span className="bg-indigo-950 text-indigo-400 border border-indigo-800 px-2 py-0.5 rounded font-mono text-[10px] font-bold">
+                                Citation: {p.citation}
+                              </span>
+                            </div>
+                            <div className="font-mono text-cyan-400 text-xs font-semibold">
+                              Section: {p.section}
+                            </div>
+                            <p className="text-slate-400 italic bg-[#0c1427] p-3.5 rounded-lg border border-slate-800/80 leading-relaxed">
+                              "{p.snippet}"
+                            </p>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="py-20 text-center text-slate-500 text-xs italic">
+                          No statutory policies retrieved yet.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Tab 3: State Transition Trace */}
+                  {activeTab === 'trace' && (
+                    <div className="relative border-l-2 border-slate-800 ml-3 space-y-4 my-2">
+                      {caseData?.execution_trace && caseData.execution_trace.length > 0 ? (
+                        caseData.execution_trace.map((trace, i) => (
+                          <div key={i} className="pl-5 relative">
+                            <div className="absolute -left-[7px] top-1.5 w-3 h-3 rounded-full bg-indigo-500 ring-4 ring-[#0c1427]" />
+                            <div className="text-xs text-slate-300 font-mono leading-relaxed bg-[#080f1d] p-3 rounded-xl border border-slate-800">
+                              {trace}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="py-20 text-center text-slate-500 text-xs italic">
+                          No state transitions recorded.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Tab 4: Compliance Dossier Pack */}
+                  {activeTab === 'audit_pack' && (
+                    <div className="space-y-4">
+                      <div className="bg-[#080f1d] border border-slate-800 rounded-xl p-5 space-y-3">
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                          <div>
+                            <h4 className="text-sm font-bold text-white uppercase font-mono">Suspicious Activity Audit Dossier (FIU-IND Format)</h4>
+                            <p className="text-xs text-slate-400">Generated automatically by FinSight Multi-Agent Decisioning Engine</p>
+                          </div>
+                          <button
+                            onClick={downloadAuditReport}
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-3.5 py-1.5 rounded-lg text-xs transition cursor-pointer flex items-center gap-1.5"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Download JSON</span>
+                          </button>
+                        </div>
+
+                        <pre className="bg-[#0c1427] p-4 rounded-lg font-mono text-[11px] text-slate-300 overflow-x-auto border border-slate-800/80 leading-relaxed max-h-[360px]">
+                          {caseData ? JSON.stringify(caseData, null, 2) : "// No investigation executed yet."}
+                        </pre>
+                      </div>
+                    </div>
+                  )}
+
                 </div>
               </div>
+
             </div>
 
           </div>
@@ -1381,7 +1604,7 @@ export default function App() {
 
       </main>
 
-      {/* Maker Modal */}
+      {/* Maker Recommendation Modal */}
       {makerModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
           <div className="bg-[#0c1427] border border-slate-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5">
