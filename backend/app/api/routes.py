@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel
 from sqlalchemy import text
 from langgraph.types import Command
-from app.database import engine, sync_engine
+from app.database import engine
 from app.tools.compliance_tools import TransactionCreatePayload, register_custom_transaction
 from app.auth.security import (
     create_mfa_challenge_token,
@@ -23,9 +23,6 @@ from app.auth.security import (
     UserPrincipal,
     PRE_PROVISIONED_ROSTER
 )
-
-# Use synchronous connection pool engine for all routes
-engine = sync_engine
 
 router = APIRouter(prefix="/api/v1", tags=["Enterprise Compliance API"])
 
@@ -45,7 +42,6 @@ class CheckerExecutionPayload(BaseModel):
     final_decision: str
     statutory_memo: str
 
-# Robust JSON Serializers
 def json_default_serializer(obj: Any) -> Any:
     if hasattr(obj, "model_dump"):
         return obj.model_dump()
@@ -110,9 +106,6 @@ def safe_list(val: Any) -> List[Any]:
     return []
 
 def format_case_row(row_dict: Dict[str, Any]) -> Dict[str, Any]:
-    status_str = row_dict["status"]
-    is_maker = status_str == "PENDING_MAKER"
-    is_checker = status_str == "PENDING_CHECKER"
     return {
         "case_id": row_dict["case_id"],
         "transaction_id": row_dict["transaction_id"],
@@ -124,9 +117,7 @@ def format_case_row(row_dict: Dict[str, Any]) -> Dict[str, Any]:
         "risk_score": float(row_dict["risk_score"]),
         "priority": row_dict.get("priority", "P1 - CRITICAL"),
         "sla_deadline": row_dict.get("sla_deadline", "45m remaining"),
-        "status": status_str,
-        "requires_maker_review": is_maker,
-        "requires_checker_review": is_checker,
+        "status": row_dict["status"],
         "final_verdict": row_dict.get("final_verdict"),
         "maker_status": safe_dict(row_dict.get("maker_status")),
         "checker_status": safe_dict(row_dict.get("checker_status")),
@@ -143,7 +134,6 @@ def format_case_row(row_dict: Dict[str, Any]) -> Dict[str, Any]:
         }
     }
 
-# 1. Initialize PostgreSQL Case Management Table & Seed Data
 def seed_enterprise_cases_if_empty(conn):
     count = conn.execute(text("SELECT COUNT(*) FROM compliance_cases WHERE status != 'FINALIZED';")).scalar()
     if count == 0:
@@ -218,13 +208,6 @@ def seed_enterprise_cases_if_empty(conn):
 def init_case_management_db():
     try:
         with engine.begin() as conn:
-            has_col = conn.execute(text("""
-                SELECT 1 FROM information_schema.columns 
-                WHERE table_name = 'compliance_cases' AND column_name = 'customer_name';
-            """)).scalar()
-            if not has_col:
-                conn.execute(text("DROP TABLE IF EXISTS compliance_cases CASCADE;"))
-
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS compliance_cases (
                     case_id VARCHAR(64) PRIMARY KEY,
@@ -255,7 +238,6 @@ def init_case_management_db():
 
 init_case_management_db()
 
-# 2. Authentication Endpoints
 @router.post("/auth/login-step1")
 async def login_step1(req: Step1LoginRequest):
     user_record = PRE_PROVISIONED_ROSTER.get(req.username.strip().lower())
@@ -315,12 +297,21 @@ async def verify_mfa(req: VerifyMfaRequest, response: Response):
         max_age=8 * 3600
     )
 
-    log_security_event("MFA_AUTHENTICATED", username=principal.username, badge_id=principal.badge_id, details="HttpOnly Session established.")
-    return {"status": "AUTHENTICATED", "user": principal.dict()}
+    log_security_event("MFA_AUTHENTICATED", username=principal.username, badge_id=principal.badge_id, details="Session established.")
+    return {
+        "status": "AUTHENTICATED", 
+        "user": principal.dict(),
+        "access_token": session_token
+    }
 
 @router.post("/auth/logout")
 async def logout(request: Request, response: Response):
     token = request.cookies.get("finsight_session")
+    if not token:
+        auth_h = request.headers.get("Authorization")
+        if auth_h and auth_h.startswith("Bearer "):
+            token = auth_h.split(" ")[1]
+
     if token:
         revoke_session(token)
     response.delete_cookie("finsight_session")
@@ -350,7 +341,7 @@ async def get_audit_logs(request: Request):
         ).mappings().all()
     return [dict(r) for r in rows]
 
-# 3. Queue Management with self-healing auto-seed
+# Queue Management with self-healing auto-seed
 @router.get("/investigations/queue")
 async def get_compliance_queue(request: Request, status_filter: Optional[str] = None):
     _ = get_current_user(request)
@@ -375,6 +366,7 @@ async def get_compliance_queue(request: Request, status_filter: Optional[str] = 
 @router.post("/investigations/queue/ingest-stream")
 async def ingest_core_banking_stream(request: Request):
     _ = require_role(["MLRO_OFFICER", "ANALYST"])(request)
+    txn = None
     try:
         with engine.connect() as conn:
             row = conn.execute(text("""
@@ -383,69 +375,74 @@ async def ingest_core_banking_stream(request: Request):
                 ORDER BY RANDOM() 
                 LIMIT 1;
             """)).mappings().first()
+            if row:
+                txn = dict(row)
+    except Exception as err:
+        print(f"[Table scan fallback note] {err}")
 
-        if not row:
-            txn = {
-                "transaction_id": f"TXN-{random.randint(1000000, 9999999)}",
-                "customer_name": "Alok Chandrashekhar",
-                "beneficiary_name": "Seychelles Prime Shell Holdings",
-                "amount": 2100000.0,
-                "channel": "SWIFT",
-                "historical_avg": 50000.0
-            }
-        else:
-            txn = dict(row)
-
-        case_id = f"CASE-{uuid.uuid4().hex[:6].upper()}"
-        ratio = round(float(txn["amount"]) / max(float(txn["historical_avg"]), 1.0), 1)
-
-        new_case = {
-            "case_id": case_id,
-            "transaction_id": txn["transaction_id"],
-            "customer_name": txn["customer_name"],
-            "beneficiary_name": txn["beneficiary_name"],
-            "amount": float(txn["amount"]),
-            "channel": txn["channel"],
-            "historical_avg": float(txn["historical_avg"]),
-            "risk_score": 1.00 if ratio > 15.0 else 0.85,
-            "priority": "P1 - CRITICAL",
-            "sla_deadline": f"{random.randint(15, 55)}m remaining",
-            "status": "PENDING_CHECKER",
-            "maker_status": safe_json_dumps({
-                "decision": "RECOMMEND_REJECT",
-                "summary": f"Inbound core banking stream anomaly alert. {ratio}x turnover velocity spike sent to unverified offshore entity.",
-                "officer": "Rohan Verma (AML-33012)",
-                "username": "analyst.verma"
-            }),
-            "findings": safe_json_dumps([
-                {"agent": "TransactionInvestigator", "risk_level": "HIGH", "score_delta": 0.45, "details": f"Core-banking high value alert: INR {float(txn['amount']):,.2f} routed via {txn['channel']}."},
-                {"agent": "CustomerRiskAnalyst", "risk_level": "HIGH", "score_delta": 0.35, "details": f"Velocity multiplier calculated at {ratio}x above 30-day customer historical average."}
-            ]),
-            "retrieved_policies": safe_json_dumps([
-                {"document_title": "Master Direction - Know Your Customer (KYC) Direction, 2016", "citation": "RBI Section 41", "section": "Section 41", "snippet": "Mandatory Enhanced Due Diligence required for accounts showing disproportionate velocity spikes."}
-            ])
+    if not txn:
+        RANDOM_TARGETS = [
+            ("Alok Chandrashekhar", "Seychelles Prime Shell Holdings", 2150000.0, "SWIFT", 45000.0),
+            ("Naveen Jindal Corp", "Cayman Horizon Trust Fund", 1880000.0, "RTGS", 60000.0),
+            ("Rajesh Exports Ltd", "Belize Meridian Crypto Ltd", 1420000.0, "IMPS", 50000.0)
+        ]
+        chosen = random.choice(RANDOM_TARGETS)
+        txn = {
+            "transaction_id": f"TXN-{random.randint(1000000, 9999999)}",
+            "customer_name": chosen[0],
+            "beneficiary_name": chosen[1],
+            "amount": chosen[2],
+            "channel": chosen[3],
+            "historical_avg": chosen[4]
         }
 
-        with engine.begin() as conn:
-            conn.execute(text("""
-                INSERT INTO compliance_cases (
-                    case_id, transaction_id, customer_name, beneficiary_name, 
-                    amount, channel, historical_avg, risk_score, priority, 
-                    sla_deadline, status, maker_status, findings, retrieved_policies
-                ) VALUES (
-                    :case_id, :transaction_id, :customer_name, :beneficiary_name, 
-                    :amount, :channel, :historical_avg, :risk_score, :priority, 
-                    :sla_deadline, :status, CAST(:maker_status AS jsonb), CAST(:findings AS jsonb), CAST(:retrieved_policies AS jsonb)
-                );
-            """), new_case)
+    case_id = f"CASE-{uuid.uuid4().hex[:6].upper()}"
+    ratio = round(float(txn["amount"]) / max(float(txn["historical_avg"]), 1.0), 1)
 
-        log_security_event("STREAM_ANOMALY_INGESTED", details=f"New alert {case_id} ingested into MLRO queue.")
-        return {"status": "SUCCESS", "case_id": case_id, "amount": txn["amount"]}
-    except Exception as e:
-        print(f"[Ingest stream error] {e}")
-        raise HTTPException(status_code=500, detail=f"Database connection error: {str(e)}")
+    new_case = {
+        "case_id": case_id,
+        "transaction_id": txn["transaction_id"],
+        "customer_name": txn["customer_name"],
+        "beneficiary_name": txn["beneficiary_name"],
+        "amount": float(txn["amount"]),
+        "channel": txn["channel"],
+        "historical_avg": float(txn["historical_avg"]),
+        "risk_score": 1.00 if ratio > 15.0 else 0.85,
+        "priority": "P1 - CRITICAL",
+        "sla_deadline": f"{random.randint(15, 55)}m remaining",
+        "status": "PENDING_CHECKER",
+        "maker_status": safe_json_dumps({
+            "decision": "RECOMMEND_REJECT",
+            "summary": f"Inbound core banking stream anomaly alert. {ratio}x turnover velocity spike sent to unverified offshore entity.",
+            "officer": "Rohan Verma (AML-33012)",
+            "username": "analyst.verma"
+        }),
+        "findings": safe_json_dumps([
+            {"agent": "TransactionInvestigator", "risk_level": "HIGH", "score_delta": 0.45, "details": f"Core-banking high value alert: INR {float(txn['amount']):,.2f} routed via {txn['channel']}."},
+            {"agent": "CustomerRiskAnalyst", "risk_level": "HIGH", "score_delta": 0.35, "details": f"Velocity multiplier calculated at {ratio}x above 30-day customer historical average."}
+        ]),
+        "retrieved_policies": safe_json_dumps([
+            {"document_title": "Master Direction - Know Your Customer (KYC) Direction, 2016", "citation": "RBI Section 41", "section": "Section 41", "snippet": "Mandatory Enhanced Due Diligence required for accounts showing disproportionate velocity spikes."}
+        ])
+    }
 
-# 4. Checker Adjudication Execution
+    with engine.begin() as conn:
+        conn.execute(text("""
+            INSERT INTO compliance_cases (
+                case_id, transaction_id, customer_name, beneficiary_name, 
+                amount, channel, historical_avg, risk_score, priority, 
+                sla_deadline, status, maker_status, findings, retrieved_policies
+            ) VALUES (
+                :case_id, :transaction_id, :customer_name, :beneficiary_name, 
+                :amount, :channel, :historical_avg, :risk_score, :priority, 
+                :sla_deadline, :status, CAST(:maker_status AS jsonb), CAST(:findings AS jsonb), CAST(:retrieved_policies AS jsonb)
+            );
+        """), new_case)
+
+    log_security_event("STREAM_ANOMALY_INGESTED", details=f"New alert {case_id} ingested into MLRO queue.")
+    return {"status": "SUCCESS", "case_id": case_id, "amount": txn["amount"]}
+
+# Checker Adjudication Execution
 @router.post("/investigations/{case_id}/checker-execute")
 async def checker_execute(case_id: str, payload: CheckerExecutionPayload, request: Request):
     checker = require_role(["MLRO_OFFICER"])(request)
@@ -459,7 +456,6 @@ async def checker_execute(case_id: str, payload: CheckerExecutionPayload, reques
     case_dict = dict(row)
     maker_st = safe_dict(case_dict.get("maker_status"))
     
-    # Enforce Four-Eyes: Maker cannot be Checker
     if maker_st.get("username") and maker_st.get("username") == checker.username:
         raise HTTPException(
             status_code=403, 
@@ -474,7 +470,6 @@ async def checker_execute(case_id: str, payload: CheckerExecutionPayload, reques
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
     }
 
-    # Attempt LangGraph checkpoint resume gracefully
     try:
         if hasattr(request.app.state, "workflow") and request.app.state.workflow is not None:
             config = {"configurable": {"thread_id": case_id}}
@@ -502,16 +497,15 @@ async def checker_execute(case_id: str, payload: CheckerExecutionPayload, reques
     with engine.connect() as conn:
         updated_row = conn.execute(text("SELECT * FROM compliance_cases WHERE case_id = :cid;"), {"cid": case_id}).mappings().first()
 
+    formatted_case = format_case_row(dict(updated_row))
     log_security_event("CHECKER_EXECUTION_FINALIZED", username=checker.username, badge_id=checker.badge_id, details=f"Case {case_id} finalized as {payload.final_decision}")
-    
-    formatted = format_case_row(dict(updated_row))
     return {
         "status": "SUCCESS",
-        "case": formatted,
-        **formatted
+        "case": formatted_case,
+        **formatted_case
     }
 
-# 5. Maker Recommendation Submission
+# Maker Recommendation Submission
 @router.post("/investigations/{case_id}/maker-recommend")
 async def maker_recommend(case_id: str, payload: MakerRecommendationPayload, request: Request):
     maker = require_role(["ANALYST", "MLRO_OFFICER"])(request)
@@ -534,15 +528,15 @@ async def maker_recommend(case_id: str, payload: MakerRecommendationPayload, req
     with engine.connect() as conn:
         updated_row = conn.execute(text("SELECT * FROM compliance_cases WHERE case_id = :cid;"), {"cid": case_id}).mappings().first()
 
+    formatted_case = format_case_row(dict(updated_row))
     log_security_event("MAKER_RECOMMENDATION_FILED", username=maker.username, badge_id=maker.badge_id, details=f"Case {case_id} -> {payload.recommendation}")
-    formatted = format_case_row(dict(updated_row))
     return {
         "status": "SUCCESS",
-        "case": formatted,
-        **formatted
+        "case": formatted_case,
+        **formatted_case
     }
 
-# 6. Maker Simulation Endpoint
+# Maker Simulation Endpoint
 @router.post("/investigations/simulate")
 async def simulate_investigation(payload: TransactionCreatePayload, request: Request):
     user = require_role(["ANALYST", "MLRO_OFFICER"])(request)
@@ -631,23 +625,8 @@ async def simulate_investigation(payload: TransactionCreatePayload, request: Req
     with engine.connect() as conn:
         created_row = conn.execute(text("SELECT * FROM compliance_cases WHERE case_id = :cid;"), {"cid": case_id}).mappings().first()
 
-    return format_case_row(dict(created_row))
-
-# Compatibility alias for legacy resume
-class LegacyAdjudicationPayload(BaseModel):
-    decision: str
-    notes: str = ""
-
-@router.post("/investigations/{case_id}/resume")
-async def resume_legacy(case_id: str, payload: LegacyAdjudicationPayload, request: Request):
-    checker_payload = CheckerExecutionPayload(
-        final_decision=payload.decision,
-        statutory_memo=payload.notes
-    )
-    res = await checker_execute(case_id, checker_payload, request)
+    formatted_case = format_case_row(dict(created_row))
     return {
-        "case_id": res["case_id"],
-        "review_status": "FINALIZED",
-        "final_verdict": res["final_verdict"],
-        "execution_trace": [f"Adjudicated as {res['final_verdict']}"]
+        **formatted_case,
+        "case": formatted_case
     }
