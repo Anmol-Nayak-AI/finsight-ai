@@ -29,12 +29,9 @@ import {
   Archive, 
   Clock, 
   Radio,
-  FileCheck,
-  ChevronRight,
-  Sparkles,
-  ArrowUpRight,
   Activity,
   Layers,
+  ChevronRight,
   Database
 } from 'lucide-react';
 
@@ -105,7 +102,7 @@ export default function App() {
   const [checkerDecision, setCheckerDecision] = useState('CONFIRMED_REJECTED');
   const [checkerNotes, setCheckerNotes] = useState('');
 
-  // Centralized Authenticated Fetch Interceptor (Attaches Bearer & Catches 401 Expiry)
+  // Centralized Authenticated Fetch Interceptor
   const apiFetch = async (url, options = {}) => {
     const headers = {
       ...(options.headers || {}),
@@ -120,7 +117,7 @@ export default function App() {
       localStorage.removeItem('finsight_token');
       setCurrentUser(null);
       setSessionToken('');
-      setAuthError('Shift session expired. Please re-authenticate.');
+      setAuthError('Compliance shift session expired. Please re-authenticate.');
       throw new Error('Session expired');
     }
     return res;
@@ -213,19 +210,19 @@ export default function App() {
         if (preserveCaseId) {
           const match = data.find(c => c.case_id === preserveCaseId);
           if (match) setSelectedCase(match);
-        } else if (data.length > 0 && !selectedCase) {
+        } else if (!selectedCase && data.length > 0) {
           const pendingMatch = data.find(c => c.status !== 'FINALIZED');
           setSelectedCase(pendingMatch || data[0]);
         }
 
         const pendingCount = data.filter(c => c.status !== 'FINALIZED').length;
         const now = new Date().toLocaleTimeString();
-        setRefreshNotification(`Synced at ${now} (${pendingCount} pending)`);
+        setRefreshNotification(`✓ Inbox synchronized at ${now} (${pendingCount} pending review)`);
         setTimeout(() => setRefreshNotification(''), 4000);
       }
     } catch (err) {
       if (err.message !== 'Session expired') {
-        setErrorMessage("Failed to load queue. Please check database connection.");
+        setErrorMessage("Failed to load queue. Please verify database connection.");
       }
     } finally {
       setLoadingQueue(false);
@@ -246,7 +243,7 @@ export default function App() {
       }
       const respData = await res.json();
       await fetchExecutiveQueue(respData.case_id);
-      setRefreshNotification(`Stream record ingested (${respData.case_id})`);
+      setRefreshNotification(`⚡ Ingested high-risk transfer into queue!`);
       setTimeout(() => setRefreshNotification(''), 5000);
     } catch (err) {
       if (err.message !== 'Session expired') {
@@ -367,7 +364,7 @@ export default function App() {
 
       setSelectedCase(finalized);
       setCasesList(prev => prev.map(c => c.case_id === finalized.case_id ? finalized : c));
-      setExecutionSuccessNotice(`Statutory ruling [${finalized.final_verdict}] sealed & written to core ledger.`);
+      setExecutionSuccessNotice(`✓ Official statutory ruling [${finalized.final_verdict}] recorded on Core Banking Ledger.`);
       setCheckerNotes('');
       setTimeout(() => setExecutionSuccessNotice(''), 6000);
     } catch (err) {
@@ -384,7 +381,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `FINSIGHT_SAR_${target.case_id || 'REPORT'}.json`;
+    a.download = `FINSIGHT_SAR_AUDIT_${target.case_id || 'REPORT'}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -399,48 +396,57 @@ export default function App() {
   const displayedCases = inboxTab === 'pending' ? pendingCases : finalizedCases;
 
   // ==========================================
-  // AUTHENTICATION SCREEN (INSTITUTIONAL GATEWAY)
+  // AUTHENTICATION SCREEN: INSTITUTIONAL CANVAS
   // ==========================================
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-[#07080B] text-slate-100 flex items-center justify-center p-4 md:p-8 font-sans antialiased selection:bg-cyan-500/20">
-        <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-12 bg-[#0C0E14] border border-white/[0.08] rounded-2xl shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)] overflow-hidden min-h-[560px]">
+      <div className="relative min-h-screen bg-[#07090E] text-slate-100 flex items-center justify-center p-4 md:p-8 font-sans antialiased overflow-hidden selection:bg-cyan-500/20">
+        
+        {/* Dual-Cone Ambient Background Lighting */}
+        <div className="absolute top-[-15%] left-[20%] w-[600px] h-[600px] bg-cyan-500/10 rounded-full blur-[140px] pointer-events-none" />
+        <div className="absolute bottom-[-15%] right-[20%] w-[650px] h-[650px] bg-indigo-600/10 rounded-full blur-[160px] pointer-events-none" />
+        
+        {/* Precision Architectural Matrix Grid Overlay */}
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] pointer-events-none" />
+
+        {/* Central Terminal Console */}
+        <div className="relative z-10 max-w-4xl w-full grid grid-cols-1 md:grid-cols-12 bg-[#0E131F]/90 backdrop-blur-2xl border border-white/[0.08] rounded-3xl shadow-[0_30px_90px_-20px_rgba(0,0,0,0.85),0_0_50px_-10px_rgba(6,182,212,0.12)] overflow-hidden min-h-[580px]">
           
           {/* Left Hero Sidebar */}
-          <div className="md:col-span-5 bg-gradient-to-br from-[#10131B] via-[#0C0E14] to-[#07080B] p-8 flex flex-col justify-between border-b md:border-b-0 md:border-r border-white/[0.08]">
+          <div className="md:col-span-5 bg-gradient-to-br from-[#121929] via-[#0E131F] to-[#0A0D16] p-8 flex flex-col justify-between border-b md:border-b-0 md:border-r border-white/[0.08]">
             <div className="space-y-6">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-cyan-500/20 to-indigo-500/20 border border-cyan-500/30 flex items-center justify-center shadow-lg shadow-cyan-500/10">
+                <div className="h-11 w-11 rounded-2xl bg-gradient-to-tr from-cyan-500/20 to-indigo-500/20 border border-cyan-500/40 flex items-center justify-center shadow-lg shadow-cyan-500/10">
                   <Shield className="w-5 h-5 text-cyan-400" />
                 </div>
                 <div>
                   <h1 className="text-sm font-bold tracking-wider text-white uppercase font-mono">FINSIGHT AI</h1>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-medium">
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/25 font-semibold">
                     RESTRICTED CLEARANCE
                   </span>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <h2 className="text-base font-semibold text-white tracking-tight">Institutional Compliance Terminal</h2>
+                <h2 className="text-base font-bold text-white tracking-tight">Institutional Compliance Terminal</h2>
                 <p className="text-xs text-slate-400 leading-relaxed font-normal">
                   Dual-controlled transaction monitoring and AML decisioning platform. Multi-factor authenticated session mandatory.
                 </p>
               </div>
 
               <div className="space-y-3 pt-2 text-xs">
-                <div className="flex items-start gap-2.5 text-slate-300 p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
+                <div className="flex items-start gap-2.5 text-slate-300 p-3 rounded-2xl bg-white/[0.03] border border-white/[0.05]">
                   <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
                   <div>
-                    <div className="font-medium text-white text-xs">Maker-Checker Dual Control</div>
+                    <div className="font-semibold text-white text-xs">Maker-Checker Dual Control</div>
                     <div className="text-[11px] text-slate-400 mt-0.5">Strict Segregation of Duties (SoD) compliant with central bank statutory guidelines.</div>
                   </div>
                 </div>
 
-                <div className="flex items-start gap-2.5 text-slate-300 p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
+                <div className="flex items-start gap-2.5 text-slate-300 p-3 rounded-2xl bg-white/[0.03] border border-white/[0.05]">
                   <Smartphone className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                   <div>
-                    <div className="font-medium text-white text-xs">RFC 6238 TOTP Multi-Factor</div>
+                    <div className="font-semibold text-white text-xs">RFC 6238 TOTP Multi-Factor</div>
                     <div className="text-[11px] text-slate-400 mt-0.5">Time-based rolling 30s cryptographic codes generated via corporate authenticators.</div>
                   </div>
                 </div>
@@ -454,7 +460,7 @@ export default function App() {
           </div>
 
           {/* Right Form Console */}
-          <div className="md:col-span-7 p-8 flex flex-col justify-between bg-[#0A0C11]">
+          <div className="md:col-span-7 p-8 flex flex-col justify-between bg-[#0B0F19]/80 backdrop-blur-xl">
             <div>
               <div className="flex items-center justify-between mb-6 pb-4 border-b border-white/[0.06]">
                 <div className="flex items-center gap-2">
@@ -463,7 +469,7 @@ export default function App() {
                     {loginStep === 1 ? "1. Officer Authentication" : "2. Two-Factor Verification"}
                   </h3>
                 </div>
-                <span className="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded">
+                <span className="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/25 px-2 py-0.5 rounded">
                   STEP {loginStep} / 2
                 </span>
               </div>
@@ -471,32 +477,32 @@ export default function App() {
               {loginStep === 1 ? (
                 <form onSubmit={handleStep1Submit} className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs text-slate-400 font-medium">Officer Identifier</label>
+                    <label className="text-xs text-slate-300 font-medium">Officer Identifier</label>
                     <input
                       type="text"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       placeholder="e.g. officer.sharma"
-                      className="w-full bg-[#0E1017] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-cyan-500/60 transition font-mono"
+                      className="w-full bg-[#111726] border border-white/[0.09] rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-cyan-500/70 transition font-mono"
                       required
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs text-slate-400 font-medium">Security Password</label>
+                    <label className="text-xs text-slate-300 font-medium">Security Password</label>
                     <div className="relative">
                       <input
                         type={showPassword ? "text" : "password"}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="Enter corporate password"
-                        className="w-full bg-[#0E1017] border border-white/[0.08] rounded-xl px-3.5 py-2.5 pr-10 text-xs text-slate-100 focus:outline-none focus:border-cyan-500/60 transition font-mono"
+                        className="w-full bg-[#111726] border border-white/[0.09] rounded-xl px-4 py-2.5 pr-10 text-xs text-slate-100 focus:outline-none focus:border-cyan-500/70 transition font-mono"
                         required
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300 cursor-pointer text-xs"
+                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200 cursor-pointer text-xs"
                       >
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
@@ -513,20 +519,20 @@ export default function App() {
                   <button
                     type="submit"
                     disabled={authLoading}
-                    className="w-full bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-semibold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-cyan-600/20 mt-2"
+                    className="w-full bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 text-slate-950 font-bold py-3 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/20 mt-2"
                   >
                     {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
                     <span>Verify Credentials & Proceed</span>
                   </button>
 
                   <div className="pt-4 mt-2 border-t border-white/[0.06] space-y-2">
-                    <span className="text-[11px] text-slate-500 font-mono">Test Harness Personas:</span>
+                    <span className="text-[11px] text-slate-400 font-mono">Test Harness Personas:</span>
                     <div className="grid grid-cols-2 gap-2.5">
                       <button
                         type="button"
                         onClick={() => { setUsername('officer.sharma'); setPassword('Compliance@2026'); }}
                         className={`p-3 rounded-xl border text-left transition cursor-pointer ${
-                          username === 'officer.sharma' ? 'bg-cyan-500/10 border-cyan-500/40' : 'bg-[#0E1017] border-white/[0.06] hover:border-white/[0.12]'
+                          username === 'officer.sharma' ? 'bg-cyan-500/10 border-cyan-500/50 shadow-md' : 'bg-[#111726] border-white/[0.06] hover:border-white/[0.14]'
                         }`}
                       >
                         <div className="flex items-center justify-between">
@@ -540,7 +546,7 @@ export default function App() {
                         type="button"
                         onClick={() => { setUsername('analyst.verma'); setPassword('Analyst@2026'); }}
                         className={`p-3 rounded-xl border text-left transition cursor-pointer ${
-                          username === 'analyst.verma' ? 'bg-indigo-500/10 border-indigo-500/40' : 'bg-[#0E1017] border-white/[0.06] hover:border-white/[0.12]'
+                          username === 'analyst.verma' ? 'bg-indigo-500/10 border-indigo-500/50 shadow-md' : 'bg-[#111726] border-white/[0.06] hover:border-white/[0.14]'
                         }`}
                       >
                         <div className="flex items-center justify-between">
@@ -554,23 +560,23 @@ export default function App() {
                 </form>
               ) : (
                 <form onSubmit={handleStep2Submit} className="space-y-4">
-                  <div className="p-3 rounded-xl bg-[#0E1017] border border-white/[0.06] flex items-center justify-between">
+                  <div className="p-3.5 rounded-xl bg-[#111726] border border-white/[0.06] flex items-center justify-between">
                     <div>
-                      <div className="text-[10px] text-slate-500 font-mono uppercase">Authenticating Identity</div>
+                      <div className="text-[10px] text-slate-400 font-mono uppercase">Authenticating Identity</div>
                       <div className="text-xs font-semibold text-white mt-0.5">{pendingOfficerInfo?.officer_name}</div>
                     </div>
-                    <span className="text-[11px] font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded">
+                    <span className="text-[11px] font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/25 px-2 py-0.5 rounded">
                       {pendingOfficerInfo?.badge_id}
                     </span>
                   </div>
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-xs">
-                      <label className="text-slate-400 font-medium">6-Digit Authenticator Code</label>
+                      <label className="text-slate-300 font-medium">6-Digit Authenticator Code</label>
                       <button
                         type="button"
                         onClick={() => setShowPairingModal(true)}
-                        className="text-[11px] text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
+                        className="text-[11px] text-cyan-400 hover:text-cyan-300 underline cursor-pointer font-medium"
                       >
                         Pair Authenticator App
                       </button>
@@ -583,10 +589,10 @@ export default function App() {
                       value={totpCode}
                       onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
                       placeholder="••••••"
-                      className="w-full bg-[#0E1017] border border-white/[0.08] rounded-xl px-4 py-3 text-center text-lg tracking-[0.5em] text-white focus:outline-none focus:border-cyan-500/60 transition font-mono font-bold"
+                      className="w-full bg-[#111726] border border-white/[0.09] rounded-xl px-4 py-3 text-center text-lg tracking-[0.5em] text-white focus:outline-none focus:border-cyan-500/70 transition font-mono font-bold"
                       required
                     />
-                    <p className="text-[11px] text-slate-500 text-center">
+                    <p className="text-[11px] text-slate-400 text-center">
                       Read rolling code from Google Authenticator or Microsoft Authenticator.
                     </p>
                   </div>
@@ -602,14 +608,14 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => { setLoginStep(1); setTotpCode(''); }}
-                      className="w-1/3 py-2.5 rounded-xl text-xs bg-white/[0.04] hover:bg-white/[0.08] text-slate-400 border border-white/[0.06] transition cursor-pointer"
+                      className="w-1/3 py-2.5 rounded-xl text-xs bg-white/[0.05] hover:bg-white/[0.08] text-slate-300 border border-white/[0.06] transition cursor-pointer font-medium"
                     >
                       Back
                     </button>
                     <button
                       type="submit"
                       disabled={authLoading || totpCode.length !== 6}
-                      className="w-2/3 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-semibold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-cyan-600/20 disabled:opacity-50"
+                      className="w-2/3 bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 text-slate-950 font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/20 disabled:opacity-50"
                     >
                       {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
                       <span>Establish Session</span>
@@ -619,16 +625,16 @@ export default function App() {
               )}
             </div>
 
-            <p className="text-[11px] text-slate-600 text-center mt-6 font-mono">
+            <p className="text-[11px] text-slate-500 text-center mt-6 font-mono">
               FinSight AI Institutional Terminal &bull; Bank Identity Sync Active
             </p>
           </div>
         </div>
 
-        {/* Device Pairing Modal */}
+        {/* Pairing Modal */}
         {showPairingModal && pendingOfficerInfo && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-            <div className="bg-[#0C0E14] border border-white/[0.1] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+            <div className="bg-[#0E131F] border border-white/[0.1] rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
               <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
                 <div className="text-white font-semibold text-xs tracking-wider uppercase font-mono">
                   Pair Corporate Authenticator
@@ -643,7 +649,7 @@ export default function App() {
                   Scan this QR key with Google Authenticator or Microsoft Authenticator:
                 </p>
 
-                <div className="flex justify-center p-3 bg-white rounded-xl w-fit mx-auto shadow-inner">
+                <div className="flex justify-center p-3 bg-white rounded-2xl w-fit mx-auto shadow-inner">
                   <img 
                     src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(pendingOfficerInfo.otpauth_uri)}`} 
                     alt="Authenticator QR Code" 
@@ -652,7 +658,7 @@ export default function App() {
                 </div>
 
                 <div className="space-y-1">
-                  <span className="text-[11px] text-slate-500 font-mono">Manual Base32 Secret:</span>
+                  <span className="text-[11px] text-slate-400 font-mono">Manual Base32 Secret:</span>
                   <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#08090D] border border-white/[0.08] font-mono text-cyan-400 text-xs">
                     <span>{pendingOfficerInfo.totp_seed}</span>
                     <button
@@ -670,7 +676,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setShowPairingModal(false)}
-                  className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-950 rounded-xl text-xs font-semibold cursor-pointer"
+                  className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl text-xs cursor-pointer"
                 >
                   Done
                 </button>
@@ -683,13 +689,18 @@ export default function App() {
   }
 
   // ==========================================
-  // MAIN WORKSPACE (AUTHENTICATED)
+  // MAIN WORKSPACE: CANVAS SYSTEM
   // ==========================================
   return (
-    <div className="min-h-screen bg-[#07080B] text-slate-100 flex flex-col font-sans antialiased selection:bg-cyan-500/20">
+    <div className="relative min-h-screen bg-[#07090E] text-slate-100 flex flex-col font-sans antialiased overflow-hidden selection:bg-cyan-500/20">
       
-      {/* Top Header */}
-      <header className="border-b border-white/[0.06] bg-[#0A0C11]/90 backdrop-blur-md px-6 py-3 flex items-center justify-between sticky top-0 z-40">
+      {/* Dynamic Ambient Mesh Cones */}
+      <div className="absolute top-[-10%] right-[10%] w-[600px] h-[600px] bg-cyan-500/5 rounded-full blur-[140px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] left-[10%] w-[650px] h-[650px] bg-indigo-600/5 rounded-full blur-[160px] pointer-events-none" />
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff03_1px,transparent_1px),linear-gradient(to_bottom,#ffffff03_1px,transparent_1px)] bg-[size:4rem_4rem] pointer-events-none" />
+
+      {/* Header */}
+      <header className="relative z-30 border-b border-white/[0.06] bg-[#0A0E18]/80 backdrop-blur-xl px-6 py-3 flex items-center justify-between sticky top-0">
         <div className="flex items-center gap-3">
           <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-cyan-500/20 to-indigo-500/20 border border-cyan-500/30 flex items-center justify-center shadow-lg shadow-cyan-500/10">
             <Shield className="w-4 h-4 text-cyan-400" />
@@ -698,7 +709,7 @@ export default function App() {
             <div className="flex items-center gap-2">
               <h1 className="text-xs font-bold tracking-wider text-white uppercase font-mono">FINSIGHT AI</h1>
               <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-medium uppercase border ${
-                isChecker ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
+                isChecker ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/25' : 'bg-indigo-500/10 text-indigo-300 border-indigo-500/25'
               }`}>
                 {isChecker ? "DESK: MLRO EXECUTIVE ADJUDICATION" : "DESK: ANALYST INVESTIGATION & TRIAGE"}
               </span>
@@ -739,7 +750,7 @@ export default function App() {
       </header>
 
       {/* Main Workspace Container */}
-      <main className="flex-1 max-w-[1600px] w-full mx-auto p-4 md:p-6 space-y-6">
+      <main className="relative z-10 flex-1 max-w-[1600px] w-full mx-auto p-4 md:p-6 space-y-6">
         
         {/* =========================================================================
             CHECKER VIEW: MLRO EXECUTIVE ADJUDICATION DESK
@@ -748,9 +759,9 @@ export default function App() {
           <div className="space-y-6">
             
             {/* Header Banner */}
-            <div className="bg-[#0C0E14] border border-white/[0.08] rounded-2xl p-5 shadow-xl flex flex-wrap items-center justify-between gap-4">
+            <div className="bg-[#0E131F]/90 backdrop-blur-xl border border-white/[0.08] rounded-2xl p-5 shadow-xl flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 rounded-xl">
+                <div className="p-2.5 bg-cyan-500/10 border border-cyan-500/25 text-cyan-400 rounded-xl">
                   <Inbox className="w-5 h-5" />
                 </div>
                 <div>
@@ -787,9 +798,9 @@ export default function App() {
 
             {/* Notifications */}
             {refreshNotification && (
-              <div className="p-3 bg-cyan-500/10 border border-cyan-500/20 rounded-xl text-xs text-cyan-300 font-mono flex items-center justify-between animate-in fade-in duration-150">
+              <div className="p-3 bg-cyan-500/10 border border-cyan-500/25 rounded-xl text-xs text-cyan-300 font-mono flex items-center justify-between animate-in fade-in duration-150">
                 <span>{refreshNotification}</span>
-                <span className="text-[10px] text-slate-500 font-mono">1M-Row Partition Synced</span>
+                <span className="text-[10px] text-slate-400 font-mono">1M-Row Partition Synced</span>
               </div>
             )}
 
@@ -812,11 +823,11 @@ export default function App() {
               
               {/* Left Column: Case Inbox Tabs */}
               <div className="col-span-12 lg:col-span-4 space-y-3">
-                <div className="grid grid-cols-2 p-1 bg-[#090B10] rounded-xl border border-white/[0.06] text-xs font-medium">
+                <div className="grid grid-cols-2 p-1 bg-[#0A0D16] rounded-xl border border-white/[0.06] text-xs font-medium">
                   <button
                     onClick={() => setInboxTab('pending')}
                     className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer ${
-                      inboxTab === 'pending' ? 'bg-cyan-600/30 text-cyan-300 border border-cyan-500/40 shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                      inboxTab === 'pending' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm' : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
                     <Clock className="w-3.5 h-3.5" />
@@ -825,7 +836,7 @@ export default function App() {
                   <button
                     onClick={() => setInboxTab('finalized')}
                     className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer ${
-                      inboxTab === 'finalized' ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                      inboxTab === 'finalized' ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shadow-sm' : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
                     <Archive className="w-3.5 h-3.5" />
@@ -835,7 +846,7 @@ export default function App() {
 
                 <div className="space-y-2 max-h-[640px] overflow-y-auto pr-1">
                   {displayedCases.length === 0 ? (
-                    <div className="p-12 text-center text-xs text-slate-500 bg-[#0C0E14] border border-white/[0.06] rounded-2xl italic space-y-2">
+                    <div className="p-12 text-center text-xs text-slate-500 bg-[#0E131F]/90 backdrop-blur-xl border border-white/[0.06] rounded-2xl italic space-y-2">
                       <Inbox className="w-6 h-6 mx-auto text-slate-600" />
                       <div>No {inboxTab} cases in registry.</div>
                       {inboxTab === 'pending' && (
@@ -854,8 +865,8 @@ export default function App() {
                         onClick={() => setSelectedCase(item)}
                         className={`p-4 rounded-xl border text-xs cursor-pointer transition space-y-2 ${
                           selectedCase?.case_id === item.case_id
-                            ? 'bg-[#10141E] border-cyan-500/50 shadow-lg shadow-cyan-500/5'
-                            : 'bg-[#0C0E14] border-white/[0.06] hover:border-white/[0.12]'
+                            ? 'bg-[#141C2E] border-cyan-500/50 shadow-lg shadow-cyan-500/5'
+                            : 'bg-[#0E131F]/90 border-white/[0.06] hover:border-white/[0.14]'
                         }`}
                       >
                         <div className="flex items-center justify-between">
@@ -892,7 +903,7 @@ export default function App() {
               {/* Right Column: Case Dossier & Adjudication Controls */}
               <div className="col-span-12 lg:col-span-8 space-y-6">
                 {selectedCase ? (
-                  <div className="bg-[#0C0E14] border border-white/[0.08] rounded-2xl p-6 shadow-xl space-y-6">
+                  <div className="bg-[#0E131F]/90 backdrop-blur-xl border border-white/[0.08] rounded-2xl p-6 shadow-xl space-y-6">
                     
                     <div className="flex items-center justify-between border-b border-white/[0.06] pb-4">
                       <div>
@@ -935,19 +946,19 @@ export default function App() {
 
                     {/* Metrics Breakdown */}
                     <div className="grid grid-cols-3 gap-3 text-xs font-mono">
-                      <div className="p-3 bg-[#08090D] rounded-xl border border-white/[0.06]">
+                      <div className="p-3 bg-[#080B12] rounded-xl border border-white/[0.06]">
                         <div className="text-[10px] text-slate-500 uppercase">Transaction Value</div>
                         <div className="text-sm font-bold text-cyan-400 mt-0.5">
                           ₹{Number(selectedCase.amount).toLocaleString('en-IN')}
                         </div>
                       </div>
-                      <div className="p-3 bg-[#08090D] rounded-xl border border-white/[0.06]">
+                      <div className="p-3 bg-[#080B12] rounded-xl border border-white/[0.06]">
                         <div className="text-[10px] text-slate-500 uppercase">30-Day Historical Baseline</div>
                         <div className="text-sm font-bold text-slate-300 mt-0.5">
                           ₹{Number(selectedCase.historical_avg).toLocaleString('en-IN')}
                         </div>
                       </div>
-                      <div className="p-3 bg-[#08090D] rounded-xl border border-white/[0.06]">
+                      <div className="p-3 bg-[#080B12] rounded-xl border border-white/[0.06]">
                         <div className="text-[10px] text-slate-500 uppercase">Settlement Channel</div>
                         <div className="text-sm font-bold text-slate-300 mt-0.5">
                           {selectedCase.channel}
@@ -962,7 +973,7 @@ export default function App() {
                       </h4>
                       <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
                         {selectedCase.findings?.map((f, i) => (
-                          <div key={i} className="p-3 rounded-xl bg-[#08090D] border border-white/[0.06] text-xs space-y-1">
+                          <div key={i} className="p-3 rounded-xl bg-[#080B12] border border-white/[0.06] text-xs space-y-1">
                             <div className="flex items-center justify-between">
                               <span className="font-mono font-bold text-indigo-400">{f.agent}</span>
                               <span className="font-mono text-cyan-400 font-bold bg-white/[0.03] px-2 py-0.5 rounded border border-white/[0.06] text-[10px]">
@@ -982,7 +993,7 @@ export default function App() {
                       </h4>
                       <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
                         {selectedCase.retrieved_policies?.map((p, idx) => (
-                          <div key={idx} className="p-2.5 rounded-xl bg-[#08090D] border border-white/[0.06] text-xs space-y-1">
+                          <div key={idx} className="p-2.5 rounded-xl bg-[#080B12] border border-white/[0.06] text-xs space-y-1">
                             <div className="flex items-center justify-between">
                               <span className="font-medium text-slate-200 text-xs">{p.document_title}</span>
                               <span className="text-[10px] font-mono text-cyan-400">{p.citation}</span>
@@ -1025,7 +1036,7 @@ export default function App() {
                             <select
                               value={checkerDecision}
                               onChange={(e) => setCheckerDecision(e.target.value)}
-                              className="w-full bg-[#08090D] border border-white/[0.08] rounded-xl p-2.5 text-slate-200 font-mono focus:outline-none focus:border-cyan-500/60 text-xs"
+                              className="w-full bg-[#080B12] border border-white/[0.08] rounded-xl p-2.5 text-slate-200 font-mono focus:outline-none focus:border-cyan-500/60 text-xs"
                             >
                               <option value="CONFIRMED_REJECTED">CONFIRM REJECT (Freeze Account & File SAR with FIU-IND)</option>
                               <option value="CONFIRMED_ESCALATED">CONFIRM ESCALATE (Refer to Law Enforcement / Special SIU)</option>
@@ -1040,7 +1051,7 @@ export default function App() {
                               value={checkerNotes}
                               onChange={(e) => setCheckerNotes(e.target.value)}
                               placeholder="Record formal statutory memo for regulatory logs..."
-                              className="w-full bg-[#08090D] border border-white/[0.08] rounded-xl p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500/60 text-xs"
+                              className="w-full bg-[#080B12] border border-white/[0.08] rounded-xl p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500/60 text-xs"
                             />
                           </div>
                         </div>
@@ -1049,7 +1060,7 @@ export default function App() {
                           <button
                             onClick={handleCheckerExecute}
                             disabled={executingRuling}
-                            className="bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-semibold px-6 py-2.5 rounded-xl text-xs transition cursor-pointer flex items-center gap-2 shadow-lg shadow-cyan-600/20 disabled:opacity-50"
+                            className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-6 py-2.5 rounded-xl text-xs transition cursor-pointer flex items-center gap-2 shadow-lg shadow-cyan-500/20 disabled:opacity-50"
                           >
                             {executingRuling ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Scale className="w-4 h-4" />}
                             <span>{executingRuling ? "Recording on Core Ledger..." : "Execute Binding Ruling (Checker)"}</span>
@@ -1060,7 +1071,7 @@ export default function App() {
 
                   </div>
                 ) : (
-                  <div className="p-16 text-center text-xs text-slate-500 bg-[#0C0E14] border border-white/[0.06] rounded-2xl italic">
+                  <div className="p-16 text-center text-xs text-slate-500 bg-[#0E131F]/90 backdrop-blur-xl border border-white/[0.06] rounded-2xl italic">
                     Select a case from the inbox on the left to inspect its full evidence dossier.
                   </div>
                 )}
@@ -1075,7 +1086,7 @@ export default function App() {
              ========================================================================= */
           <div className="space-y-6">
             
-            <section className="bg-[#0C0E14] border border-white/[0.08] rounded-2xl p-6 shadow-xl relative overflow-hidden">
+            <section className="bg-[#0E131F]/90 backdrop-blur-xl border border-white/[0.08] rounded-2xl p-6 shadow-xl relative overflow-hidden">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-5 pb-4 border-b border-white/[0.06]">
                 <div>
                   <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400 font-mono">
@@ -1097,7 +1108,7 @@ export default function App() {
                     type="text"
                     value={formData.customer_name}
                     onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
-                    className="w-full bg-[#08090D] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500/60 transition font-medium"
+                    className="w-full bg-[#080B12] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500/60 transition font-medium"
                   />
                 </div>
 
@@ -1109,7 +1120,7 @@ export default function App() {
                     type="text"
                     value={formData.beneficiary_name}
                     onChange={(e) => setFormData({ ...formData, beneficiary_name: e.target.value })}
-                    className="w-full bg-[#08090D] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500/60 transition font-medium"
+                    className="w-full bg-[#080B12] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500/60 transition font-medium"
                   />
                 </div>
 
@@ -1120,7 +1131,7 @@ export default function App() {
                   <select
                     value={formData.channel}
                     onChange={(e) => setFormData({ ...formData, channel: e.target.value })}
-                    className="w-full bg-[#08090D] border border-white/[0.08] rounded-xl px-3 py-2.5 text-slate-200 font-mono focus:outline-none focus:border-indigo-500/60 transition font-medium"
+                    className="w-full bg-[#080B12] border border-white/[0.08] rounded-xl px-3 py-2.5 text-slate-200 font-mono focus:outline-none focus:border-indigo-500/60 transition font-medium"
                   >
                     <option value="IMPS">IMPS (Immediate Transfer)</option>
                     <option value="NEFT">NEFT (Batch Settlement)</option>
@@ -1149,7 +1160,7 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="md:col-span-6 bg-[#08090D] p-4 rounded-xl border border-white/[0.06] space-y-2.5">
+                <div className="md:col-span-6 bg-[#080B12] p-4 rounded-xl border border-white/[0.06] space-y-2.5">
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-slate-400 font-medium">Transaction Amount</span>
                     <span className="font-mono text-cyan-400 font-bold text-base">
@@ -1167,7 +1178,7 @@ export default function App() {
                   />
                 </div>
 
-                <div className="md:col-span-6 bg-[#08090D] p-4 rounded-xl border border-white/[0.06] space-y-2.5">
+                <div className="md:col-span-6 bg-[#080B12] p-4 rounded-xl border border-white/[0.06] space-y-2.5">
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-slate-400 font-medium">30-Day Historical Average Baseline</span>
                     <span className="font-mono text-slate-300 font-semibold text-xs">
@@ -1194,7 +1205,7 @@ export default function App() {
                     type="text"
                     value={formData.narration}
                     onChange={(e) => setFormData({ ...formData, narration: e.target.value })}
-                    className="w-full bg-[#08090D] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500/60 transition font-medium"
+                    className="w-full bg-[#080B12] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500/60 transition font-medium"
                   />
                 </div>
 
@@ -1273,7 +1284,7 @@ export default function App() {
                         </p>
                       </div>
                     </div>
-                    <span className="text-xs font-mono px-3 py-1.5 rounded-xl font-bold border bg-emerald-500/20 text-emerald-300 border-emerald-500/30">
+                    <span className="text-xs font-mono px-3 py-1.5 rounded-xl font-bold border border-emerald-500/30">
                       AUTO_APPROVED
                     </span>
                   </div>
@@ -1283,7 +1294,7 @@ export default function App() {
 
             {/* Evidence & Telemetry */}
             <div className="grid grid-cols-12 gap-6">
-              <div className="col-span-12 lg:col-span-4 bg-[#0C0E14] border border-white/[0.08] rounded-2xl p-5 shadow-xl space-y-4">
+              <div className="col-span-12 lg:col-span-4 bg-[#0E131F]/90 backdrop-blur-xl border border-white/[0.08] rounded-2xl p-5 shadow-xl space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 font-mono">
                     <TrendingUp className="w-4 h-4 text-indigo-400" /> Risk Index
@@ -1302,7 +1313,7 @@ export default function App() {
                   </span>
                 </div>
 
-                <div className="w-full bg-[#08090D] h-2.5 rounded-full overflow-hidden border border-white/[0.04]">
+                <div className="w-full bg-[#080B12] h-2.5 rounded-full overflow-hidden border border-white/[0.04]">
                   <div 
                     className={`h-full rounded-full ${riskPercent >= 70 ? 'bg-rose-500' : 'bg-emerald-500'}`}
                     style={{ width: `${riskPercent || 0}%` }}
@@ -1310,14 +1321,14 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="col-span-12 lg:col-span-8 bg-[#0C0E14] border border-white/[0.08] rounded-2xl p-6 shadow-xl space-y-3">
+              <div className="col-span-12 lg:col-span-8 bg-[#0E131F]/90 backdrop-blur-xl border border-white/[0.08] rounded-2xl p-6 shadow-xl space-y-3">
                 <h4 className="text-xs font-mono font-semibold text-slate-400 uppercase tracking-wider">
                   Investigative Evidence & Findings ({caseData?.findings?.length || 0})
                 </h4>
                 <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
                   {caseData?.findings?.length > 0 ? (
                     caseData.findings.map((f, i) => (
-                      <div key={i} className="p-3 rounded-xl bg-[#08090D] border border-white/[0.06] text-xs space-y-1">
+                      <div key={i} className="p-3 rounded-xl bg-[#080B12] border border-white/[0.06] text-xs space-y-1">
                         <div className="flex items-center justify-between font-mono">
                           <span className="text-indigo-400 font-bold">{f.agent}</span>
                           <span className="text-cyan-400 font-bold">+{f.score_delta.toFixed(2)} Delta</span>
@@ -1341,12 +1352,12 @@ export default function App() {
 
       {/* Maker Modal */}
       {makerModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-          <div className="bg-[#0C0E14] border border-white/[0.1] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-[#0E131F] border border-white/[0.1] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5">
             <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-amber-500/10 text-amber-400 rounded-xl border border-amber-500/20">
-                  <UserCheck className="w-5 h-5" />
+                  <UserCheck className="w-6 h-6" />
                 </div>
                 <div>
                   <h3 className="text-xs font-bold text-white uppercase font-mono tracking-wider">Analyst Recommendation (Maker Step)</h3>
@@ -1369,7 +1380,7 @@ export default function App() {
                   <select
                     value={makerDecision}
                     onChange={(e) => setMakerDecision(e.target.value)}
-                    className="w-full bg-[#08090D] border border-white/[0.08] rounded-xl p-3 text-slate-200 font-mono focus:outline-none focus:border-amber-500/60 font-semibold text-xs"
+                    className="w-full bg-[#080B12] border border-white/[0.08] rounded-xl p-3 text-slate-200 font-mono focus:outline-none focus:border-amber-500/60 font-semibold text-xs"
                   >
                     <option value="RECOMMEND_REJECT">RECOMMEND REJECT (Recommend Account Freeze & FIU SAR)</option>
                     <option value="RECOMMEND_ESCALATE">RECOMMEND ESCALATE (Refer to Legal / FIU Enforcement)</option>
@@ -1384,7 +1395,7 @@ export default function App() {
                     value={makerNotes}
                     onChange={(e) => setMakerNotes(e.target.value)}
                     placeholder="e.g. Beneficiary matched offshore shell pattern; customer velocity spike is 18.8x..."
-                    className="w-full bg-[#08090D] border border-white/[0.08] rounded-xl p-3 text-slate-200 focus:outline-none focus:border-amber-500/60 text-xs"
+                    className="w-full bg-[#080B12] border border-white/[0.08] rounded-xl p-3 text-slate-200 focus:outline-none focus:border-amber-500/60 text-xs"
                   />
                 </div>
               </div>
@@ -1409,8 +1420,8 @@ export default function App() {
 
       {/* Governance Modal */}
       {govModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-          <div className="bg-[#0C0E14] border border-white/[0.1] rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-5">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-[#0E131F] border border-white/[0.1] rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-5">
             <div className="flex items-center justify-between border-b border-white/[0.06] pb-4">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-cyan-500/10 text-cyan-400 rounded-xl border border-cyan-500/20">
@@ -1426,11 +1437,11 @@ export default function App() {
               </button>
             </div>
 
-            <div className="flex gap-2 p-1 bg-[#08090D] rounded-xl border border-white/[0.06] text-xs font-medium w-fit">
+            <div className="flex gap-2 p-1 bg-[#080B12] rounded-xl border border-white/[0.06] text-xs font-medium w-fit">
               <button
                 onClick={() => setGovTab('directory')}
                 className={`px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 transition cursor-pointer ${
-                  govTab === 'directory' ? 'bg-cyan-600/30 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-white'
+                  govTab === 'directory' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-white'
                 }`}
               >
                 <Users className="w-3.5 h-3.5" />
@@ -1439,7 +1450,7 @@ export default function App() {
               <button
                 onClick={() => setGovTab('logs')}
                 className={`px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 transition cursor-pointer ${
-                  govTab === 'logs' ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40' : 'text-slate-400 hover:text-white'
+                  govTab === 'logs' ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40' : 'text-slate-400 hover:text-white'
                 }`}
               >
                 <History className="w-3.5 h-3.5" />
@@ -1450,7 +1461,7 @@ export default function App() {
             <div className="max-h-[380px] overflow-y-auto space-y-2.5 pr-1">
               {govTab === 'directory' ? (
                 officerList.map((off, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-3.5 rounded-xl bg-[#08090D] border border-white/[0.06] text-xs">
+                  <div key={idx} className="flex items-center justify-between p-3.5 rounded-xl bg-[#080B12] border border-white/[0.06] text-xs">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-white/[0.04] border border-white/[0.06] flex items-center justify-center font-bold text-slate-300 font-mono">
                         {off.full_name.charAt(0)}
@@ -1480,7 +1491,7 @@ export default function App() {
                 ))
               ) : (
                 auditLogs.map((log, idx) => (
-                  <div key={idx} className="p-3 rounded-xl bg-[#08090D] border border-white/[0.06] text-xs space-y-1 font-mono">
+                  <div key={idx} className="p-3 rounded-xl bg-[#080B12] border border-white/[0.06] text-xs space-y-1 font-mono">
                     <div className="flex items-center justify-between">
                       <span className="text-cyan-400 font-bold">{log.event_type}</span>
                       <span className="text-[10px] text-slate-500">
