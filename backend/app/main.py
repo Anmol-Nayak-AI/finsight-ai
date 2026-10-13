@@ -21,9 +21,9 @@ app_state = {}
 async def lifespan(app: FastAPI):
     # 1. Initialize Tables & Vector extension
     try:
-        async with engine.begin() as conn:
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
-            await conn.run_sync(Base.metadata.create_all)
+        with engine.begin() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+            Base.metadata.create_all(conn)
     except Exception as e:
         print(f"[FinSight Init Warning] Database schema check: {e}")
 

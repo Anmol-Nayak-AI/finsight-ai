@@ -1,7 +1,6 @@
 import asyncio
 from langchain_openai import OpenAIEmbeddings
-from sqlalchemy import text
-from app.database import async_session_factory, engine
+from app.database import async_session_factory, async_engine as engine
 from app.models.entities import Base
 from app.models.rag_entities import RegulatoryDocumentChunk
 
