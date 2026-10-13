@@ -3,9 +3,7 @@ import {
   Shield, 
   CheckCircle2, 
   AlertTriangle, 
-  FileText, 
   UserCheck, 
-  BookOpen, 
   RefreshCw, 
   TrendingUp, 
   Sliders, 
@@ -30,8 +28,7 @@ import {
   Check, 
   Archive, 
   Clock, 
-  Radio,
-  FileCheck
+  Radio
 } from 'lucide-react';
 
 export default function App() {
@@ -48,8 +45,8 @@ export default function App() {
 
   // Auth States
   const [loginStep, setLoginStep] = useState(1);
-  const [username, setUsername] = useState('analyst.verma');
-  const [password, setPassword] = useState('Analyst@2026');
+  const [username, setUsername] = useState('officer.sharma');
+  const [password, setPassword] = useState('Compliance@2026');
   const [showPassword, setShowPassword] = useState(false);
   const [mfaChallengeToken, setMfaChallengeToken] = useState('');
   const [totpCode, setTotpCode] = useState('');
@@ -60,7 +57,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
 
   // Checker Inbox & Queue States
-  const [inboxTab, setInboxTab] = useState('pending'); // 'pending' | 'finalized'
+  const [inboxTab, setInboxTab] = useState('pending');
   const [casesList, setCasesList] = useState([]);
   const [selectedCase, setSelectedCase] = useState(null);
   const [loadingQueue, setLoadingQueue] = useState(false);
@@ -98,6 +95,19 @@ export default function App() {
 
   const [checkerDecision, setCheckerDecision] = useState('CONFIRMED_REJECTED');
   const [checkerNotes, setCheckerNotes] = useState('');
+
+  // Centralized Authenticated Fetch Interceptor (Catches 401 Session Expiry)
+  const apiFetch = async (url, options = {}) => {
+    const res = await fetch(url, { ...options, credentials: 'include' });
+    if (res.status === 401) {
+      // 8-Hour Session Expired
+      localStorage.removeItem('finsight_user');
+      setCurrentUser(null);
+      setAuthError('Compliance shift session expired. Please re-authenticate.');
+      throw new Error('Session expired');
+    }
+    return res;
+  };
 
   // Step 1: Password Check
   const handleStep1Submit = async (e) => {
@@ -168,7 +178,7 @@ export default function App() {
     setLoadingQueue(true);
     setErrorMessage('');
     try {
-      const res = await fetch('/api/v1/investigations/queue', { credentials: 'include' });
+      const res = await apiFetch('/api/v1/investigations/queue');
       if (res.ok) {
         const data = await res.json();
         setCasesList(data);
@@ -176,18 +186,20 @@ export default function App() {
         if (preserveCaseId) {
           const match = data.find(c => c.case_id === preserveCaseId);
           if (match) setSelectedCase(match);
-        } else if (!selectedCase && data.length > 0) {
-          setSelectedCase(data[0]);
+        } else if (data.length > 0 && !selectedCase) {
+          const pendingMatch = data.find(c => c.status !== 'FINALIZED');
+          setSelectedCase(pendingMatch || data[0]);
         }
 
-        const pendingOnes = data.filter(c => c.status !== 'FINALIZED');
+        const pendingCount = data.filter(c => c.status !== 'FINALIZED').length;
         const now = new Date().toLocaleTimeString();
-        setRefreshNotification(`✓ Inbox synchronized at ${now} (${pendingOnes.length} pending review)`);
+        setRefreshNotification(`✓ Inbox synchronized at ${now} (${pendingCount} pending review)`);
         setTimeout(() => setRefreshNotification(''), 4000);
       }
     } catch (err) {
-      console.error(err);
-      setErrorMessage("Failed to sync queue with server.");
+      if (err.message !== 'Session expired') {
+        setErrorMessage("Failed to load queue. Please verify database connection.");
+      }
     } finally {
       setLoadingQueue(false);
     }
@@ -198,17 +210,21 @@ export default function App() {
     setIngestingStream(true);
     setErrorMessage('');
     try {
-      const res = await fetch('/api/v1/investigations/queue/ingest-stream', {
-        method: 'POST',
-        credentials: 'include'
+      const res = await apiFetch('/api/v1/investigations/queue/ingest-stream', {
+        method: 'POST'
       });
-      if (!res.ok) throw new Error("Stream ingestion failed.");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || "Stream ingestion failed.");
+      }
       const respData = await res.json();
       await fetchExecutiveQueue(respData.case_id);
-      setRefreshNotification(`⚡ Ingested new high-risk transfer into queue!`);
+      setRefreshNotification(`⚡ Ingested high-risk transfer into queue!`);
       setTimeout(() => setRefreshNotification(''), 5000);
     } catch (err) {
-      setErrorMessage(err.message);
+      if (err.message !== 'Session expired') {
+        setErrorMessage(err.message || "Failed to ingest stream record.");
+      }
     } finally {
       setIngestingStream(false);
     }
@@ -223,14 +239,12 @@ export default function App() {
   const loadGovernanceData = async () => {
     try {
       const [uRes, aRes] = await Promise.all([
-        fetch('/api/v1/auth/users', { credentials: 'include' }),
-        fetch('/api/v1/auth/audit-logs', { credentials: 'include' })
+        apiFetch('/api/v1/auth/users'),
+        apiFetch('/api/v1/auth/audit-logs')
       ]);
       if (uRes.ok) setOfficerList(await uRes.json());
       if (aRes.ok) setAuditLogs(await aRes.json());
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (_) {}
   };
 
   useEffect(() => {
@@ -261,10 +275,9 @@ export default function App() {
     };
 
     try {
-      const res = await fetch('/api/v1/investigations/simulate', {
+      const res = await apiFetch('/api/v1/investigations/simulate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify(payload),
       });
 
@@ -276,7 +289,7 @@ export default function App() {
       const data = await res.json();
       setCaseData(data);
     } catch (err) {
-      setErrorMessage(err.message || 'Audit failed');
+      if (err.message !== 'Session expired') setErrorMessage(err.message || 'Audit failed');
     } finally {
       setLoading(false);
     }
@@ -287,10 +300,9 @@ export default function App() {
     if (!caseData?.case_id) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/v1/investigations/${caseData.case_id}/maker-recommend`, {
+      const res = await apiFetch(`/api/v1/investigations/${caseData.case_id}/maker-recommend`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ recommendation: makerDecision, findings_summary: makerNotes }),
       });
       if (!res.ok) throw new Error("Maker submission rejected.");
@@ -298,13 +310,13 @@ export default function App() {
       setCaseData(updated.case);
       setMakerModalOpen(false);
     } catch (err) {
-      setErrorMessage(err.message);
+      if (err.message !== 'Session expired') setErrorMessage(err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Checker: Execute Statutory Ruling (Bug-Free Direct State Update)
+  // Checker: Execute Statutory Ruling
   const handleCheckerExecute = async () => {
     if (!selectedCase?.case_id) return;
     setExecutingRuling(true);
@@ -312,10 +324,9 @@ export default function App() {
     setExecutionSuccessNotice('');
 
     try {
-      const res = await fetch(`/api/v1/investigations/${selectedCase.case_id}/checker-execute`, {
+      const res = await apiFetch(`/api/v1/investigations/${selectedCase.case_id}/checker-execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ final_decision: checkerDecision, statutory_memo: checkerNotes }),
       });
 
@@ -327,20 +338,13 @@ export default function App() {
       const data = await res.json();
       const finalized = data.case;
 
-      // 1. Instantly update selected case in React state
       setSelectedCase(finalized);
-      
-      // 2. Update list in state
       setCasesList(prev => prev.map(c => c.case_id === finalized.case_id ? finalized : c));
-      
-      // 3. Show clear success notice
-      setExecutionSuccessNotice(`✓ Official statutory ruling [${finalized.final_verdict}] executed and permanently recorded in core ledger.`);
+      setExecutionSuccessNotice(`✓ Official statutory ruling [${finalized.final_verdict}] recorded on Core Banking Ledger.`);
       setCheckerNotes('');
-      
-      // 4. Automatically switch to resolved view after 1.5 seconds if desired
       setTimeout(() => setExecutionSuccessNotice(''), 6000);
     } catch (err) {
-      setErrorMessage(err.message);
+      if (err.message !== 'Session expired') setErrorMessage(err.message);
     } finally {
       setExecutingRuling(false);
     }
@@ -445,7 +449,7 @@ export default function App() {
                       type="text"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
-                      placeholder="e.g. analyst.verma"
+                      placeholder="e.g. officer.sharma"
                       className="w-full bg-[#05070e] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono"
                       required
                     />
@@ -493,20 +497,6 @@ export default function App() {
                     <div className="grid grid-cols-2 gap-2.5">
                       <button
                         type="button"
-                        onClick={() => { setUsername('analyst.verma'); setPassword('Analyst@2026'); }}
-                        className={`p-3 rounded-xl border text-left transition cursor-pointer ${
-                          username === 'analyst.verma' ? 'bg-indigo-500/10 border-indigo-500/60 ring-1 ring-indigo-500/30' : 'bg-[#05070e] border-slate-800'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-white">Rohan Verma</span>
-                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold">MAKER</span>
-                        </div>
-                        <div className="text-[10px] text-slate-400 mt-1">Role: ANALYST &bull; Desk: Triage</div>
-                      </button>
-
-                      <button
-                        type="button"
                         onClick={() => { setUsername('officer.sharma'); setPassword('Compliance@2026'); }}
                         className={`p-3 rounded-xl border text-left transition cursor-pointer ${
                           username === 'officer.sharma' ? 'bg-cyan-500/10 border-cyan-500/60 ring-1 ring-cyan-500/30' : 'bg-[#05070e] border-slate-800'
@@ -517,6 +507,20 @@ export default function App() {
                           <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold">CHECKER</span>
                         </div>
                         <div className="text-[10px] text-slate-400 mt-1">Role: MLRO &bull; Desk: Adjudication</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => { setUsername('analyst.verma'); setPassword('Analyst@2026'); }}
+                        className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                          username === 'analyst.verma' ? 'bg-indigo-500/10 border-indigo-500/60 ring-1 ring-indigo-500/30' : 'bg-[#05070e] border-slate-800'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-white">Rohan Verma</span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold">MAKER</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-1">Role: ANALYST &bull; Desk: Triage</div>
                       </button>
                     </div>
                   </div>
@@ -594,7 +598,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Device Pairing Modal */}
+        {/* Pairing Modal */}
         {showPairingModal && pendingOfficerInfo && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
             <div className="bg-[#0b1020] border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
@@ -657,7 +661,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#06080f] text-slate-100 flex flex-col font-sans antialiased selection:bg-indigo-500/30">
       
-      {/* Top Header */}
+      {/* Header */}
       <header className="border-b border-slate-800/80 bg-[#090d18]/90 backdrop-blur-md px-6 py-3 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-400 p-[1px] shadow-lg shadow-indigo-500/20">
@@ -756,7 +760,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Notification & Status Messages */}
+            {/* Notifications */}
             {refreshNotification && (
               <div className="p-3 bg-cyan-500/10 border border-cyan-500/30 rounded-xl text-xs text-cyan-300 font-mono flex items-center justify-between animate-in fade-in duration-200">
                 <span>{refreshNotification}</span>
@@ -1182,7 +1186,7 @@ export default function App() {
               </div>
             </section>
 
-            {/* Workflow Banner for Maker */}
+            {/* Maker Banner */}
             {caseData && (
               <div>
                 {caseData.status === 'PENDING_MAKER' ? (
@@ -1252,7 +1256,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Evidence & Telemetry Grid */}
+            {/* Evidence & Findings */}
             <div className="grid grid-cols-12 gap-6">
               <div className="col-span-12 lg:col-span-4 bg-[#0b1020] border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
                 <div className="flex items-center justify-between">
@@ -1310,7 +1314,7 @@ export default function App() {
 
       </main>
 
-      {/* MAKER RECOMMENDATION MODAL */}
+      {/* Maker Modal */}
       {makerModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
           <div className="bg-[#0b1020] border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5">
@@ -1378,7 +1382,7 @@ export default function App() {
         </div>
       )}
 
-      {/* GOVERNANCE MODAL */}
+      {/* Governance Modal */}
       {govModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
           <div className="bg-[#0b1020] border border-slate-800 rounded-3xl max-w-3xl w-full p-6 shadow-2xl space-y-5">
@@ -1393,7 +1397,7 @@ export default function App() {
                 </div>
               </div>
               <button onClick={() => setGovModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
