@@ -11,13 +11,13 @@ DATABASE_URL = os.getenv(
     "postgresql+psycopg://postgres:password@localhost:5432/finsight"
 )
 
-# Enterprise Production Connection Pool with Sleep/Wake Resilience
+# Enterprise Production Connection Pool with Sleep/Wake Socket Auto-Recovery
 engine = create_engine(
     DATABASE_URL,
-    pool_pre_ping=True,       # Pings DB prior to every query; recovers severed sockets automatically
-    pool_recycle=300,         # Recycles idle connections every 5 minutes to prevent stale OS sockets
+    pool_pre_ping=True,       # Pings DB prior to every query; discards severed sockets
+    pool_recycle=300,         # Recycles idle connections every 5 minutes
     pool_size=10,             # Maintains 10 persistent worker connections
-    max_overflow=20           # Accommodates concurrent burst throughput
+    max_overflow=20           # Accommodates burst throughput
 )
 
 # Synchronous engine aliases & session helpers
