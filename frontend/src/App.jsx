@@ -28,6 +28,7 @@ import {
   Check, 
   Archive, 
   Clock, 
+  Radio,
   Activity,
   Database,
   FileText,
@@ -35,8 +36,9 @@ import {
   Terminal,
   FileCheck,
   Dices,
-  Radio,
-  Cpu
+  PlusCircle,
+  FileWarning,
+  ExternalLink
 } from 'lucide-react';
 
 export default function App() {
@@ -216,11 +218,11 @@ export default function App() {
           const match = data.find(c => c.case_id === preserveCaseId);
           if (match) setSelectedCase(match);
         } else if (!selectedCase && data.length > 0) {
-          const pendingMatch = data.find(c => c.status !== 'FINALIZED');
+          const pendingMatch = data.find(c => c.status !== 'FINALIZED' && c.status !== 'ESCALATED_FIU');
           setSelectedCase(pendingMatch || data[0]);
         }
 
-        const pendingCount = data.filter(c => c.status !== 'FINALIZED').length;
+        const pendingCount = data.filter(c => c.status !== 'FINALIZED' && c.status !== 'ESCALATED_FIU').length;
         const now = new Date().toLocaleTimeString();
         setRefreshNotification(`Synced at ${now} (${pendingCount} pending)`);
         setTimeout(() => setRefreshNotification(''), 4000);
@@ -248,7 +250,7 @@ export default function App() {
       }
       const respData = await res.json();
       await fetchExecutiveQueue(respData.case_id);
-      setRefreshNotification(`Stream record ingested (${respData.case_id})`);
+      setRefreshNotification(`Stream alert ingested (${respData.case_id})`);
       setTimeout(() => setRefreshNotification(''), 5000);
     } catch (err) {
       if (err.message !== 'Session expired') {
@@ -286,8 +288,26 @@ export default function App() {
     setTimeout(() => setCopiedSeed(false), 2000);
   };
 
+  // Reset Maker form to cleanly start a new investigation
+  const handleStartNewInvestigation = () => {
+    const newTxnId = `TXN-${Math.floor(1000000 + Math.random() * 900000)}`;
+    setFormData({
+      transaction_id: newTxnId,
+      customer_name: 'Vikram Singhania',
+      amount: 450000,
+      historical_avg: 50000,
+      channel: 'RTGS',
+      beneficiary_name: 'Panama Horizon Shell Corp',
+      beneficiary_is_new: true,
+      narration: 'Commercial Retainer Settlement'
+    });
+    setCaseData(null);
+    setErrorMessage('');
+  };
+
   // Dynamic Synthesis Engine
   const generateRandomSimulation = () => {
+    if (caseData?.status === 'PENDING_CHECKER') return; // Locked while pending
     const randomTxn = `TXN-${Math.floor(1000000 + Math.random() * 900000)}`;
     const originator = ["Aarav Malhotra", "Vikram Singhania", "Nexa Cloud Tech", "TechFab Solutions"][Math.floor(Math.random() * 4)];
     const benList = [
@@ -316,6 +336,7 @@ export default function App() {
 
   // Maker: Trigger Audit
   const handleSimulate = async () => {
+    if (caseData?.status === 'PENDING_CHECKER') return; // Prevent multiple requests
     setLoading(true);
     setErrorMessage('');
     const payload = {
@@ -354,7 +375,7 @@ export default function App() {
 
   // Maker: Transmit Recommendation
   const handleMakerSubmit = async () => {
-    if (!caseData?.case_id) return;
+    if (!caseData?.case_id || caseData?.status === 'PENDING_CHECKER') return;
     setLoading(true);
     try {
       const res = await apiFetch(`/api/v1/investigations/${caseData.case_id}/maker-recommend`, {
@@ -362,7 +383,10 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recommendation: makerDecision, findings_summary: makerNotes }),
       });
-      if (!res.ok) throw new Error("Maker submission rejected.");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || "Maker submission rejected.");
+      }
       const updated = await res.json();
       setCaseData(updated.case);
       setMakerModalOpen(false);
@@ -397,9 +421,15 @@ export default function App() {
 
       setSelectedCase(finalized);
       setCasesList(prev => prev.map(c => c.case_id === finalized.case_id ? finalized : c));
-      setExecutionSuccessNotice(`Statutory ruling [${finalized.final_verdict}] sealed & written to core ledger.`);
+      
+      if (finalized.status === 'ESCALATED_FIU') {
+        setExecutionSuccessNotice(`⚖️ STATUTORY ESCALATION SEALED: Transmitted to Financial Intelligence Unit (FIU-IND) under Docket ${finalized.fiu_docket_id}. Funds frozen in Escrow.`);
+      } else {
+        setExecutionSuccessNotice(`Statutory ruling [${finalized.final_verdict}] sealed & written to core ledger.`);
+      }
+
       setCheckerNotes('');
-      setTimeout(() => setExecutionSuccessNotice(''), 6000);
+      setTimeout(() => setExecutionSuccessNotice(''), 8000);
     } catch (err) {
       if (err.message !== 'Session expired') setErrorMessage(err.message);
     } finally {
@@ -414,7 +444,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `FINSIGHT_SAR_${target.case_id || 'REPORT'}.json`;
+    a.download = `FINSIGHT_STATUTORY_DOCKET_${target.fiu_docket_id || target.case_id || 'REPORT'}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -424,18 +454,18 @@ export default function App() {
   const velocityRatio = (parseFloat(formData.amount || 0) / (parseFloat(formData.historical_avg || 1) || 1)).toFixed(1);
   const riskPercent = caseData ? Math.round((caseData.risk_score || 0) * 100) : null;
 
-  const pendingCases = (casesList || []).filter(c => c && c.status !== 'FINALIZED');
-  const finalizedCases = (casesList || []).filter(c => c && c.status === 'FINALIZED');
+  const pendingCases = (casesList || []).filter(c => c && c.status !== 'FINALIZED' && c.status !== 'ESCALATED_FIU');
+  const finalizedCases = (casesList || []).filter(c => c && (c.status === 'FINALIZED' || c.status === 'ESCALATED_FIU'));
   const displayedCases = inboxTab === 'pending' ? pendingCases : finalizedCases;
 
+  const isMakerLocked = caseData?.status === 'PENDING_CHECKER';
+
   // ==========================================
-  // AUTHENTICATION SCREEN: INSTITUTIONAL GATEWAY
+  // AUTHENTICATION VIEW
   // ==========================================
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col font-sans antialiased selection:bg-cyan-500/30">
-        
-        {/* Top App Bar */}
         <div className="h-14 border-b border-slate-800 bg-[#090f1d]/90 backdrop-blur-md px-6 flex items-center justify-between z-20">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center">
@@ -457,10 +487,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Full-Bleed Split Canvas */}
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
-          
-          {/* Left Hero Sidebar */}
           <div className="lg:col-span-5 bg-gradient-to-br from-[#0c1427] via-[#091020] to-[#070c18] border-b lg:border-b-0 lg:border-r border-slate-800 p-8 lg:p-12 flex flex-col justify-between relative overflow-hidden">
             <div className="space-y-8 relative z-10">
               <div className="space-y-3">
@@ -476,7 +503,6 @@ export default function App() {
                 </p>
               </div>
 
-              {/* Metrics Matrix */}
               <div className="grid grid-cols-2 gap-3 font-mono text-xs">
                 <div className="p-3.5 rounded-xl bg-[#0e172c] border border-slate-800 space-y-1">
                   <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1.5">
@@ -496,7 +522,7 @@ export default function App() {
 
                 <div className="p-3.5 rounded-xl bg-[#0e172c] border border-slate-800 space-y-1">
                   <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1.5">
-                    <UserCheck className="w-3 h-3 text-indigo-400" /> Segregation
+                    <UserCheck className="w-3.5 h-3.5 text-indigo-400" /> Segregation
                   </div>
                   <div className="text-sm font-bold text-white">Maker & Checker</div>
                   <div className="text-[10px] text-indigo-400">Enforced SoD</div>
@@ -518,10 +544,8 @@ export default function App() {
             </div>
           </div>
 
-          {/* Right Terminal Console */}
           <div className="lg:col-span-7 bg-[#070b14] p-8 lg:p-14 flex items-center justify-center">
             <div className="max-w-md w-full space-y-6">
-              
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-bold text-white tracking-tight">
@@ -534,7 +558,7 @@ export default function App() {
                 <p className="text-xs text-slate-400">
                   {loginStep === 1 
                     ? "Enter institutional clearance credentials or select a test persona below." 
-                    : "Enter the rolling 6-digit code from Google or Microsoft Authenticator."}
+                    : "Enter rolling 6-digit code from your authenticator app."}
                 </p>
               </div>
 
@@ -589,10 +613,9 @@ export default function App() {
                     <span>Verify Credentials & Proceed to 2FA</span>
                   </button>
 
-                  {/* Persona Shortcuts */}
                   <div className="pt-5 border-t border-slate-800 space-y-2.5">
                     <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
-                      <span>Evaluator Persona Shortcuts:</span>
+                      <span>Test Harness Personas:</span>
                       <span className="text-cyan-400">Select to Populate</span>
                     </div>
 
@@ -831,7 +854,7 @@ export default function App() {
                     Executive Adjudication Queue & Four-Eyes Clearance
                   </h2>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Review triaged anomalies submitted by AML Analysts. Under Segregation of Duties (SoD), input sliders are disabled on this terminal.
+                    Review triaged anomalies submitted by AML Analysts. Select binding orders: Freeze Funds, Escalate to FIU-IND, or Override.
                   </p>
                 </div>
               </div>
@@ -902,7 +925,7 @@ export default function App() {
                     }`}
                   >
                     <Archive className="w-3.5 h-3.5" />
-                    <span>Resolved ({finalizedCases.length})</span>
+                    <span>Resolved / Escalated ({finalizedCases.length})</span>
                   </button>
                 </div>
 
@@ -937,11 +960,13 @@ export default function App() {
                         <div className="flex items-center justify-between">
                           <span className="font-mono font-bold text-white">{item.case_id}</span>
                           <span className={`text-[9px] font-mono px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
-                            item.status === 'FINALIZED'
+                            item.status === 'ESCALATED_FIU'
+                              ? 'bg-purple-950 text-purple-300 border border-purple-800'
+                              : item.status === 'FINALIZED'
                               ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
                               : 'bg-rose-950 text-rose-400 border border-rose-800'
                           }`}>
-                            {item.status === 'FINALIZED' ? item.final_verdict : (item.priority || "P1 CRITICAL")}
+                            {item.status === 'ESCALATED_FIU' ? 'ESCALATED TO FIU' : (item.status === 'FINALIZED' ? item.final_verdict : (item.priority || "P1 CRITICAL"))}
                           </span>
                         </div>
 
@@ -965,7 +990,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Right Column: Case Dossier & Direct Adjudication Controls */}
+              {/* Right Column: Case Dossier & Statutory Execution Controls */}
               <div className="col-span-12 lg:col-span-8 space-y-6">
                 {selectedCase ? (
                   <div className="bg-[#0c1427] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
@@ -977,6 +1002,11 @@ export default function App() {
                           <span className="text-[11px] font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">
                             Txn: {selectedCase.transaction_id}
                           </span>
+                          {selectedCase.fiu_docket_id && (
+                            <span className="text-[10px] font-mono text-purple-300 bg-purple-950 px-2 py-0.5 rounded border border-purple-800 font-bold">
+                              Docket: {selectedCase.fiu_docket_id}
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-slate-400 mt-0.5">
                           Audit Dossier compiled via LangGraph Cyclic Engine &bull; pgvector RRF
@@ -1069,8 +1099,42 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Statutory Adjudication Controls */}
-                    {selectedCase.status === 'FINALIZED' ? (
+                    {/* Statutory Adjudication Controls & Escalation Treatment */}
+                    {selectedCase.status === 'ESCALATED_FIU' ? (
+                      /* ESCALATION SCENARIO: LOCKED BY EXTERNAL STATUTE */
+                      <div className="p-5 rounded-xl bg-purple-950/40 border border-purple-800 text-purple-200 text-xs space-y-3 shadow-xl">
+                        <div className="flex items-center justify-between border-b border-purple-800/80 pb-3">
+                          <div className="flex items-center gap-2">
+                            <Scale className="w-5 h-5 text-purple-400 animate-pulse" />
+                            <div>
+                              <div className="font-bold text-white text-sm">STATUTORY REGULATORY ESCALATION ACTIVE</div>
+                              <div className="text-[11px] text-purple-300 font-mono">FIU-IND Suspicious Transaction Report (STR) Filed</div>
+                            </div>
+                          </div>
+                          <span className="px-2.5 py-1 rounded-md bg-purple-900 border border-purple-700 text-white font-mono font-bold text-xs">
+                            {selectedCase.fiu_docket_id}
+                          </span>
+                        </div>
+
+                        <p className="text-slate-300 text-[11px] leading-relaxed">
+                          This case has been formally referred to the <strong>Financial Intelligence Unit (FIU-IND)</strong> and the <strong>Enforcement Directorate (ED)</strong> under Section 12 of the Prevention of Money-Laundering Act. The funds of <strong>₹{Number(selectedCase.amount).toLocaleString('en-IN')}</strong> are locked in <strong>Statutory Regulatory Escrow</strong>. Internal bank officers cannot unilaterally release or alter this case pending court / regulatory clearance.
+                        </p>
+
+                        <div className="flex items-center justify-between pt-2 border-t border-purple-800/80">
+                          <span className="text-[10px] font-mono text-slate-400">
+                            Escalated by: {selectedCase.checker_status?.officer || "MLRO"}
+                          </span>
+                          <button
+                            onClick={downloadAuditReport}
+                            className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-lg shadow-purple-600/30"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Download Statutory FIU STR Docket (XML/JSON)</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : selectedCase.status === 'FINALIZED' ? (
+                      /* RESOLVED INTERNALLY */
                       <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-800 text-emerald-300 text-xs flex items-center justify-between shadow-lg">
                         <div className="space-y-1">
                           <div className="font-medium flex items-center gap-1.5">
@@ -1090,6 +1154,7 @@ export default function App() {
                         </button>
                       </div>
                     ) : (
+                      /* PENDING ADJUDICATION CONTROLS */
                       <div className="pt-4 border-t border-slate-800 space-y-3">
                         <h4 className="text-xs font-mono font-semibold text-white uppercase tracking-wider flex items-center gap-1.5">
                           <Scale className="w-4 h-4 text-cyan-400" /> Execute Official MLRO Statutory Ruling
@@ -1103,8 +1168,8 @@ export default function App() {
                               onChange={(e) => setCheckerDecision(e.target.value)}
                               className="w-full bg-[#080f1d] border border-slate-700 rounded-xl p-2.5 text-slate-200 font-mono focus:outline-none focus:border-cyan-500 text-xs"
                             >
-                              <option value="CONFIRMED_REJECTED">CONFIRM REJECT (Freeze Account & File SAR with FIU-IND)</option>
-                              <option value="CONFIRMED_ESCALATED">CONFIRM ESCALATE (Refer to Law Enforcement / Special SIU)</option>
+                              <option value="CONFIRMED_REJECTED">CONFIRM REJECT (Freeze Account & File Internal SAR)</option>
+                              <option value="CONFIRMED_ESCALATED">CONFIRM ESCALATE (Transmit External STR to FIU-IND & Freeze in Escrow)</option>
                               <option value="OVERRIDDEN_APPROVED">OVERRIDE & APPROVE (Release Transaction Funds)</option>
                             </select>
                           </div>
@@ -1115,7 +1180,7 @@ export default function App() {
                               type="text"
                               value={checkerNotes}
                               onChange={(e) => setCheckerNotes(e.target.value)}
-                              placeholder="Record formal statutory memo for regulatory logs..."
+                              placeholder={checkerDecision === 'CONFIRMED_ESCALATED' ? "Mandatory statutory justification for FIU-IND..." : "Record formal statutory memo for regulatory logs..."}
                               className="w-full bg-[#080f1d] border border-slate-700 rounded-xl p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500 text-xs"
                             />
                           </div>
@@ -1125,10 +1190,26 @@ export default function App() {
                           <button
                             onClick={handleCheckerExecute}
                             disabled={executingRuling}
-                            className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-6 py-2.5 rounded-xl text-xs transition cursor-pointer flex items-center gap-2 shadow-lg shadow-cyan-500/20 disabled:opacity-50"
+                            className={`font-bold px-6 py-2.5 rounded-xl text-xs transition cursor-pointer flex items-center gap-2 shadow-lg disabled:opacity-50 ${
+                              checkerDecision === 'CONFIRMED_ESCALATED' 
+                                ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-600/30' 
+                                : 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-cyan-500/20'
+                            }`}
                           >
-                            {executingRuling ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Scale className="w-4 h-4" />}
-                            <span>{executingRuling ? "Recording on Core Ledger..." : "Execute Binding Ruling (Checker)"}</span>
+                            {executingRuling ? (
+                              <RefreshCw className="w-4 h-4 animate-spin" />
+                            ) : checkerDecision === 'CONFIRMED_ESCALATED' ? (
+                              <FileWarning className="w-4 h-4" />
+                            ) : (
+                              <Scale className="w-4 h-4" />
+                            )}
+                            <span>
+                              {executingRuling 
+                                ? "Recording on Core Ledger..." 
+                                : checkerDecision === 'CONFIRMED_ESCALATED' 
+                                ? "Dispatch Statutory Escalation to FIU-IND" 
+                                : "Execute Binding Ruling (Checker)"}
+                            </span>
                           </button>
                         </div>
                       </div>
@@ -1147,11 +1228,11 @@ export default function App() {
           </div>
         ) : (
           /* =========================================================================
-              MAKER VIEW: FULL INSTITUTIONAL ANALYST WORKBENCH (RESTORED)
+              MAKER VIEW: ANALYST INVESTIGATION WORKBENCH (WITH FORM LOCKING & RESET)
              ========================================================================= */
           <div className="space-y-6">
             
-            {/* 1. Transaction Injection & Simulation Deck */}
+            {/* 1. Transaction Injection & Counterparty Profiler */}
             <section className="bg-gradient-to-b from-[#0c1427] to-[#091020] border border-slate-800 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-5 pb-4 border-b border-slate-800/80">
                 <div>
@@ -1164,23 +1245,36 @@ export default function App() {
                   </p>
                 </div>
 
-                <button
-                  onClick={generateRandomSimulation}
-                  className="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-500/30 transition cursor-pointer flex items-center gap-2 font-mono shadow-sm"
-                >
-                  <Dices className="w-4 h-4 text-indigo-400" />
-                  <span>Synthesize Dynamic Record</span>
-                </button>
+                <div className="flex items-center gap-2.5">
+                  {/* Clean Start New Investigation Action */}
+                  <button
+                    onClick={handleStartNewInvestigation}
+                    className="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30 transition cursor-pointer flex items-center gap-1.5 font-mono shadow-sm"
+                  >
+                    <PlusCircle className="w-3.5 h-3.5" />
+                    <span>New Investigation</span>
+                  </button>
+
+                  <button
+                    onClick={generateRandomSimulation}
+                    disabled={isMakerLocked}
+                    className="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-500/30 transition cursor-pointer flex items-center gap-2 font-mono shadow-sm disabled:opacity-40"
+                  >
+                    <Dices className="w-4 h-4 text-indigo-400" />
+                    <span>Synthesize Dynamic Record</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Form Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-5 text-xs">
+              {/* Form Grid (Locked when case is pending with Checker) */}
+              <div className={`grid grid-cols-1 md:grid-cols-12 gap-5 text-xs transition-opacity ${isMakerLocked ? 'opacity-60 pointer-events-none' : ''}`}>
                 <div className="md:col-span-3 space-y-1.5">
                   <label className="text-slate-400 font-medium flex items-center gap-1.5">
                     <User className="w-3.5 h-3.5 text-indigo-400" /> Originating Account Holder
                   </label>
                   <input
                     type="text"
+                    disabled={isMakerLocked}
                     value={formData.customer_name}
                     onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
                     className="w-full bg-[#080f1d] border border-slate-700 rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500 transition font-medium"
@@ -1193,6 +1287,7 @@ export default function App() {
                   </label>
                   <input
                     type="text"
+                    disabled={isMakerLocked}
                     value={formData.beneficiary_name}
                     onChange={(e) => setFormData({ ...formData, beneficiary_name: e.target.value })}
                     className="w-full bg-[#080f1d] border border-slate-700 rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500 transition font-medium"
@@ -1204,6 +1299,7 @@ export default function App() {
                     <CreditCard className="w-3.5 h-3.5 text-indigo-400" /> Payment Channel
                   </label>
                   <select
+                    disabled={isMakerLocked}
                     value={formData.channel}
                     onChange={(e) => setFormData({ ...formData, channel: e.target.value })}
                     className="w-full bg-[#080f1d] border border-slate-700 rounded-xl px-3 py-2.5 text-slate-200 font-mono focus:outline-none focus:border-indigo-500 transition font-medium"
@@ -1220,6 +1316,7 @@ export default function App() {
                   <label className="text-slate-400 font-medium">Beneficiary Relationship Status</label>
                   <button
                     type="button"
+                    disabled={isMakerLocked}
                     onClick={() => setFormData({ ...formData, beneficiary_is_new: !formData.beneficiary_is_new })}
                     className={`w-full py-2.5 px-4 rounded-xl border text-xs font-semibold flex items-center justify-between transition cursor-pointer ${
                       formData.beneficiary_is_new ? 'bg-amber-950/40 border-amber-800 text-amber-300' : 'bg-emerald-950/40 border-emerald-800 text-emerald-300'
@@ -1235,7 +1332,6 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Amount and Baseline Sliders */}
                 <div className="md:col-span-6 bg-[#080f1d] p-4 rounded-xl border border-slate-800 space-y-2.5">
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-slate-400 font-medium">Transaction Amount</span>
@@ -1245,6 +1341,7 @@ export default function App() {
                   </div>
                   <input
                     type="range"
+                    disabled={isMakerLocked}
                     min="1000"
                     max="2500000"
                     step="5000"
@@ -1266,6 +1363,7 @@ export default function App() {
                   </div>
                   <input
                     type="range"
+                    disabled={isMakerLocked}
                     min="5000"
                     max="300000"
                     step="5000"
@@ -1275,11 +1373,11 @@ export default function App() {
                   />
                 </div>
 
-                {/* Purpose Memo & Action Button */}
                 <div className="md:col-span-9 space-y-1.5">
                   <label className="text-slate-400 font-medium">Payment Narration / Purpose Memo</label>
                   <input
                     type="text"
+                    disabled={isMakerLocked}
                     value={formData.narration}
                     onChange={(e) => setFormData({ ...formData, narration: e.target.value })}
                     className="w-full bg-[#080f1d] border border-slate-700 rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500 transition font-medium"
@@ -1289,11 +1387,21 @@ export default function App() {
                 <div className="md:col-span-3 flex items-end">
                   <button
                     onClick={handleSimulate}
-                    disabled={loading}
-                    className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/30 disabled:opacity-50"
+                    disabled={loading || isMakerLocked}
+                    className={`w-full font-semibold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-lg disabled:opacity-50 ${
+                      isMakerLocked 
+                        ? 'bg-slate-800 text-slate-400 cursor-not-allowed' 
+                        : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/30'
+                    }`}
                   >
-                    {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                    <span>Trigger Multi-Agent Audit</span>
+                    {loading ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : isMakerLocked ? (
+                      <Lock className="w-4 h-4" />
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
+                    <span>{isMakerLocked ? "Transmitted to MLRO" : "Trigger Multi-Agent Audit"}</span>
                   </button>
                 </div>
               </div>
@@ -1313,7 +1421,7 @@ export default function App() {
                           STAGE 1: AWAITING ANALYST RECOMMENDATION (MAKER STEP)
                         </h4>
                         <p className="text-xs text-amber-200/80 font-mono mt-0.5">
-                          Risk Score: <span className="font-bold">{riskPercent}%</span> &bull; Exceeded statutory threshold. Record findings and transmit to MLRO.
+                          Risk Score: <span className="font-bold">{riskPercent}%</span> &bull; Exceeded 70% threshold. Record findings and transmit to MLRO.
                         </p>
                       </div>
                     </div>
@@ -1327,6 +1435,7 @@ export default function App() {
                     </button>
                   </div>
                 ) : caseData.status === 'PENDING_CHECKER' ? (
+                  /* STAGE 2: TRANSMITTED - CLEAR ACTIONS TO START NEXT CASE */
                   <div className="p-4 rounded-2xl border bg-cyan-950/30 border-cyan-800 text-cyan-200 flex items-center justify-between shadow-lg">
                     <div className="flex items-center gap-3.5">
                       <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-400">
@@ -1337,14 +1446,23 @@ export default function App() {
                           STAGE 2: CASE TRANSMITTED TO MLRO CHECKER INBOX
                         </h4>
                         <p className="text-xs text-cyan-200/80 font-mono mt-0.5">
-                          Recommendation submitted: <strong>{caseData.maker_status?.decision}</strong>. Case suspended pending executive sign-off.
+                          Recommendation submitted: <strong>{caseData.maker_status?.decision}</strong>. Case suspended in MLRO queue. Investigation locked.
                         </p>
                       </div>
                     </div>
 
-                    <span className="text-xs font-mono px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-cyan-400">
-                      Transmitted &bull; In MLRO Queue
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-mono px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-cyan-400">
+                        Transmitted &bull; In MLRO Queue
+                      </span>
+                      <button
+                        onClick={handleStartNewInvestigation}
+                        className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs font-sans transition cursor-pointer flex items-center gap-1.5 shadow"
+                      >
+                        <PlusCircle className="w-4 h-4" />
+                        <span>Start Next Case</span>
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="p-4 rounded-2xl border bg-emerald-950/30 border-emerald-800 text-emerald-200 flex items-center justify-between shadow-lg">
@@ -1369,13 +1487,9 @@ export default function App() {
               </div>
             )}
 
-            {/* 3. Comprehensive Telemetry & 4-Tab Evidence Intelligence Console */}
+            {/* 3. Telemetry & 4-Tab Evidence Intelligence Console */}
             <div className="grid grid-cols-12 gap-6">
-              
-              {/* Left Column: Risk Index + Active State Machine Pipeline */}
               <div className="col-span-12 lg:col-span-4 space-y-6">
-                
-                {/* Risk Gauge Card */}
                 <div className="bg-[#0c1427] border border-slate-800 rounded-2xl p-5 shadow-xl">
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 font-mono">
@@ -1419,7 +1533,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Active Multi-Agent State Machine Nodes */}
                 <div className="bg-[#0c1427] border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3.5">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 font-mono">
@@ -1447,13 +1560,10 @@ export default function App() {
                     ))}
                   </div>
                 </div>
-
               </div>
 
-              {/* Right Column: 4-Tab Evidence Intelligence Console */}
+              {/* 4-Tab Evidence Intelligence Console */}
               <div className="col-span-12 lg:col-span-8 bg-[#0c1427] border border-slate-800 rounded-2xl shadow-xl flex flex-col overflow-hidden">
-                
-                {/* Tabs Bar */}
                 <div className="flex items-center justify-between border-b border-slate-800 px-6 pt-3 bg-[#090f1d]">
                   <div className="flex gap-2">
                     {[
@@ -1486,10 +1596,7 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Tab Content Panels */}
                 <div className="p-6 flex-1 overflow-y-auto max-h-[580px]">
-                  
-                  {/* Tab 1: Findings */}
                   {activeTab === 'findings' && (
                     <div className="space-y-3.5">
                       {caseData?.findings && caseData.findings.length > 0 ? (
@@ -1521,7 +1628,6 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* Tab 2: Statutory Citations (pgvector RRF) */}
                   {activeTab === 'citations' && (
                     <div className="space-y-4">
                       {caseData?.retrieved_policies && caseData.retrieved_policies.length > 0 ? (
@@ -1549,7 +1655,6 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* Tab 3: State Transition Trace */}
                   {activeTab === 'trace' && (
                     <div className="relative border-l-2 border-slate-800 ml-3 space-y-4 my-2">
                       {caseData?.execution_trace && caseData.execution_trace.length > 0 ? (
@@ -1569,7 +1674,6 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* Tab 4: Compliance Dossier Pack */}
                   {activeTab === 'audit_pack' && (
                     <div className="space-y-4">
                       <div className="bg-[#080f1d] border border-slate-800 rounded-xl p-5 space-y-3">
@@ -1593,10 +1697,8 @@ export default function App() {
                       </div>
                     </div>
                   )}
-
                 </div>
               </div>
-
             </div>
 
           </div>
