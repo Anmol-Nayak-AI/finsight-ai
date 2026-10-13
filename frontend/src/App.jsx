@@ -28,7 +28,14 @@ import {
   Check, 
   Archive, 
   Clock, 
-  Radio
+  Radio,
+  FileCheck,
+  ChevronRight,
+  Sparkles,
+  ArrowUpRight,
+  Activity,
+  Layers,
+  Database
 } from 'lucide-react';
 
 export default function App() {
@@ -213,12 +220,12 @@ export default function App() {
 
         const pendingCount = data.filter(c => c.status !== 'FINALIZED').length;
         const now = new Date().toLocaleTimeString();
-        setRefreshNotification(`✓ Inbox synchronized at ${now} (${pendingCount} pending review)`);
+        setRefreshNotification(`Synced at ${now} (${pendingCount} pending)`);
         setTimeout(() => setRefreshNotification(''), 4000);
       }
     } catch (err) {
       if (err.message !== 'Session expired') {
-        setErrorMessage("Failed to load queue. Please verify database connection.");
+        setErrorMessage("Failed to load queue. Please check database connection.");
       }
     } finally {
       setLoadingQueue(false);
@@ -239,7 +246,7 @@ export default function App() {
       }
       const respData = await res.json();
       await fetchExecutiveQueue(respData.case_id);
-      setRefreshNotification(`⚡ Ingested high-risk transfer into queue!`);
+      setRefreshNotification(`Stream record ingested (${respData.case_id})`);
       setTimeout(() => setRefreshNotification(''), 5000);
     } catch (err) {
       if (err.message !== 'Session expired') {
@@ -360,7 +367,7 @@ export default function App() {
 
       setSelectedCase(finalized);
       setCasesList(prev => prev.map(c => c.case_id === finalized.case_id ? finalized : c));
-      setExecutionSuccessNotice(`✓ Official statutory ruling [${finalized.final_verdict}] recorded on Core Banking Ledger.`);
+      setExecutionSuccessNotice(`Statutory ruling [${finalized.final_verdict}] sealed & written to core ledger.`);
       setCheckerNotes('');
       setTimeout(() => setExecutionSuccessNotice(''), 6000);
     } catch (err) {
@@ -377,7 +384,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `FINSIGHT_SAR_AUDIT_${target.case_id || 'REPORT'}.json`;
+    a.download = `FINSIGHT_SAR_${target.case_id || 'REPORT'}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -392,113 +399,113 @@ export default function App() {
   const displayedCases = inboxTab === 'pending' ? pendingCases : finalizedCases;
 
   // ==========================================
-  // AUTHENTICATION SCREEN
+  // AUTHENTICATION SCREEN (INSTITUTIONAL GATEWAY)
   // ==========================================
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-[#05070e] text-slate-100 flex items-center justify-center p-4 md:p-8 font-sans antialiased selection:bg-indigo-500/30">
-        <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-12 bg-[#090d18] border border-slate-800/90 rounded-3xl shadow-2xl overflow-hidden min-h-[580px]">
+      <div className="min-h-screen bg-[#07080B] text-slate-100 flex items-center justify-center p-4 md:p-8 font-sans antialiased selection:bg-cyan-500/20">
+        <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-12 bg-[#0C0E14] border border-white/[0.08] rounded-2xl shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)] overflow-hidden min-h-[560px]">
           
-          <div className="md:col-span-5 bg-gradient-to-br from-[#0c1326] via-[#090e1c] to-[#060912] p-8 flex flex-col justify-between border-b md:border-b-0 md:border-r border-slate-800/80">
+          {/* Left Hero Sidebar */}
+          <div className="md:col-span-5 bg-gradient-to-br from-[#10131B] via-[#0C0E14] to-[#07080B] p-8 flex flex-col justify-between border-b md:border-b-0 md:border-r border-white/[0.08]">
             <div className="space-y-6">
               <div className="flex items-center gap-3">
-                <div className="h-11 w-11 rounded-2xl bg-gradient-to-tr from-indigo-600 to-cyan-400 p-[1.5px] shadow-lg shadow-indigo-500/20">
-                  <div className="h-full w-full bg-[#090e1c] rounded-[14px] flex items-center justify-center">
-                    <Shield className="w-5 h-5 text-indigo-400" />
-                  </div>
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-cyan-500/20 to-indigo-500/20 border border-cyan-500/30 flex items-center justify-center shadow-lg shadow-cyan-500/10">
+                  <Shield className="w-5 h-5 text-cyan-400" />
                 </div>
                 <div>
-                  <h1 className="text-base font-bold tracking-wider text-white uppercase font-mono">FINSIGHT AI</h1>
-                  <span className="text-[10px] font-sans px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 font-medium">
-                    Restricted Banking Gateway
+                  <h1 className="text-sm font-bold tracking-wider text-white uppercase font-mono">FINSIGHT AI</h1>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-medium">
+                    RESTRICTED CLEARANCE
                   </span>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <h2 className="text-lg font-bold text-white tracking-tight">Four-Eyes Governance Portal</h2>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Dual-control AML decisioning. Analysts triage anomalies (Maker); MLRO Officers execute legal freezes (Checker).
+                <h2 className="text-base font-semibold text-white tracking-tight">Institutional Compliance Terminal</h2>
+                <p className="text-xs text-slate-400 leading-relaxed font-normal">
+                  Dual-controlled transaction monitoring and AML decisioning platform. Multi-factor authenticated session mandatory.
                 </p>
               </div>
 
               <div className="space-y-3 pt-2 text-xs">
-                <div className="flex items-start gap-2.5 text-slate-300">
+                <div className="flex items-start gap-2.5 text-slate-300 p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
                   <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
                   <div>
-                    <div className="font-semibold text-white">Separation of Operational Duties</div>
-                    <div className="text-[11px] text-slate-400">Analyst recommends; MLRO Officer holds exclusive authority to freeze or file SARs.</div>
+                    <div className="font-medium text-white text-xs">Maker-Checker Dual Control</div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">Strict Segregation of Duties (SoD) compliant with central bank statutory guidelines.</div>
                   </div>
                 </div>
 
-                <div className="flex items-start gap-2.5 text-slate-300">
-                  <Lock className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <div className="flex items-start gap-2.5 text-slate-300 p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
+                  <Smartphone className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                   <div>
-                    <div className="font-semibold text-white">RFC 6238 Rolling TOTP</div>
-                    <div className="text-[11px] text-slate-400">Time-based cryptographic codes generated via Google/Microsoft Authenticator.</div>
+                    <div className="font-medium text-white text-xs">RFC 6238 TOTP Multi-Factor</div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">Time-based rolling 30s cryptographic codes generated via corporate authenticators.</div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="pt-6 border-t border-slate-800/80 text-[11px] text-slate-500 font-medium flex items-center gap-2">
+            <div className="pt-6 border-t border-white/[0.06] text-[11px] text-slate-500 font-mono flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>SOC-2 Type II Certified Institutional Access</span>
+              <span>SOC-2 Type II Certified Gateway</span>
             </div>
           </div>
 
-          <div className="md:col-span-7 p-8 flex flex-col justify-between bg-[#080c16]">
+          {/* Right Form Console */}
+          <div className="md:col-span-7 p-8 flex flex-col justify-between bg-[#0A0C11]">
             <div>
-              <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800/80">
+              <div className="flex items-center justify-between mb-6 pb-4 border-b border-white/[0.06]">
                 <div className="flex items-center gap-2">
-                  <Lock className="w-4 h-4 text-indigo-400" />
-                  <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
+                  <Lock className="w-4 h-4 text-cyan-400" />
+                  <h3 className="text-xs font-semibold text-white uppercase tracking-wider font-mono">
                     {loginStep === 1 ? "1. Officer Authentication" : "2. Two-Factor Verification"}
                   </h3>
                 </div>
-                <span className="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 rounded">
-                  STEP {loginStep} OF 2
+                <span className="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded">
+                  STEP {loginStep} / 2
                 </span>
               </div>
 
               {loginStep === 1 ? (
                 <form onSubmit={handleStep1Submit} className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs text-slate-300 font-medium">Compliance Officer Username</label>
+                    <label className="text-xs text-slate-400 font-medium">Officer Identifier</label>
                     <input
                       type="text"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       placeholder="e.g. officer.sharma"
-                      className="w-full bg-[#05070e] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono"
+                      className="w-full bg-[#0E1017] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-cyan-500/60 transition font-mono"
                       required
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs text-slate-300 font-medium">Password</label>
+                    <label className="text-xs text-slate-400 font-medium">Security Password</label>
                     <div className="relative">
                       <input
                         type={showPassword ? "text" : "password"}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Enter password"
-                        className="w-full bg-[#05070e] border border-slate-800 rounded-xl px-4 py-2.5 pr-10 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono"
+                        placeholder="Enter corporate password"
+                        className="w-full bg-[#0E1017] border border-white/[0.08] rounded-xl px-3.5 py-2.5 pr-10 text-xs text-slate-100 focus:outline-none focus:border-cyan-500/60 transition font-mono"
                         required
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200 cursor-pointer text-xs"
+                        className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300 cursor-pointer text-xs"
                       >
-                        {showPassword ? "Hide" : "Show"}
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
                   </div>
 
                   {authError && (
-                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
                       <span>{authError}</span>
                     </div>
                   )}
@@ -506,64 +513,64 @@ export default function App() {
                   <button
                     type="submit"
                     disabled={authLoading}
-                    className="w-full bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-semibold py-3 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/25 mt-2"
+                    className="w-full bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-semibold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-cyan-600/20 mt-2"
                   >
                     {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-                    <span>Verify Credentials & Proceed to 2FA</span>
+                    <span>Verify Credentials & Proceed</span>
                   </button>
 
-                  <div className="pt-4 mt-2 border-t border-slate-800/80 space-y-2">
-                    <span className="text-[11px] text-slate-400 font-medium">Select Pre-Provisioned Officer Persona:</span>
+                  <div className="pt-4 mt-2 border-t border-white/[0.06] space-y-2">
+                    <span className="text-[11px] text-slate-500 font-mono">Test Harness Personas:</span>
                     <div className="grid grid-cols-2 gap-2.5">
                       <button
                         type="button"
                         onClick={() => { setUsername('officer.sharma'); setPassword('Compliance@2026'); }}
                         className={`p-3 rounded-xl border text-left transition cursor-pointer ${
-                          username === 'officer.sharma' ? 'bg-cyan-500/10 border-cyan-500/60 ring-1 ring-cyan-500/30' : 'bg-[#05070e] border-slate-800'
+                          username === 'officer.sharma' ? 'bg-cyan-500/10 border-cyan-500/40' : 'bg-[#0E1017] border-white/[0.06] hover:border-white/[0.12]'
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-white">Priya Sharma</span>
+                          <span className="text-xs font-semibold text-white">Priya Sharma</span>
                           <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold">CHECKER</span>
                         </div>
-                        <div className="text-[10px] text-slate-400 mt-1">Role: MLRO &bull; Desk: Adjudication</div>
+                        <div className="text-[10px] text-slate-400 mt-1">Role: MLRO &bull; Queue Adjudication</div>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => { setUsername('analyst.verma'); setPassword('Analyst@2026'); }}
                         className={`p-3 rounded-xl border text-left transition cursor-pointer ${
-                          username === 'analyst.verma' ? 'bg-indigo-500/10 border-indigo-500/60 ring-1 ring-indigo-500/30' : 'bg-[#05070e] border-slate-800'
+                          username === 'analyst.verma' ? 'bg-indigo-500/10 border-indigo-500/40' : 'bg-[#0E1017] border-white/[0.06] hover:border-white/[0.12]'
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-white">Rohan Verma</span>
+                          <span className="text-xs font-semibold text-white">Rohan Verma</span>
                           <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold">MAKER</span>
                         </div>
-                        <div className="text-[10px] text-slate-400 mt-1">Role: ANALYST &bull; Desk: Triage</div>
+                        <div className="text-[10px] text-slate-400 mt-1">Role: ANALYST &bull; Simulation Desk</div>
                       </button>
                     </div>
                   </div>
                 </form>
               ) : (
                 <form onSubmit={handleStep2Submit} className="space-y-4">
-                  <div className="p-3.5 rounded-xl bg-[#05070e] border border-slate-800 flex items-center justify-between">
+                  <div className="p-3 rounded-xl bg-[#0E1017] border border-white/[0.06] flex items-center justify-between">
                     <div>
-                      <div className="text-[11px] text-slate-400">Authenticating Identity:</div>
-                      <div className="text-sm font-bold text-white">{pendingOfficerInfo?.officer_name}</div>
+                      <div className="text-[10px] text-slate-500 font-mono uppercase">Authenticating Identity</div>
+                      <div className="text-xs font-semibold text-white mt-0.5">{pendingOfficerInfo?.officer_name}</div>
                     </div>
-                    <span className="text-xs font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2 py-1 rounded">
+                    <span className="text-[11px] font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded">
                       {pendingOfficerInfo?.badge_id}
                     </span>
                   </div>
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-xs">
-                      <label className="text-slate-300 font-medium">Enter 6-Digit Authenticator Code (TOTP)</label>
+                      <label className="text-slate-400 font-medium">6-Digit Authenticator Code</label>
                       <button
                         type="button"
                         onClick={() => setShowPairingModal(true)}
-                        className="text-[11px] text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
+                        className="text-[11px] text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
                       >
                         Pair Authenticator App
                       </button>
@@ -576,7 +583,7 @@ export default function App() {
                       value={totpCode}
                       onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
                       placeholder="••••••"
-                      className="w-full bg-[#05070e] border border-slate-800 rounded-xl px-4 py-3 text-center text-xl tracking-[0.6em] text-white focus:outline-none focus:border-emerald-500 transition font-mono font-bold"
+                      className="w-full bg-[#0E1017] border border-white/[0.08] rounded-xl px-4 py-3 text-center text-lg tracking-[0.5em] text-white focus:outline-none focus:border-cyan-500/60 transition font-mono font-bold"
                       required
                     />
                     <p className="text-[11px] text-slate-500 text-center">
@@ -585,8 +592,8 @@ export default function App() {
                   </div>
 
                   {authError && (
-                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
                       <span>{authError}</span>
                     </div>
                   )}
@@ -595,36 +602,36 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => { setLoginStep(1); setTotpCode(''); }}
-                      className="w-1/3 py-3 rounded-xl text-xs bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800 transition cursor-pointer"
+                      className="w-1/3 py-2.5 rounded-xl text-xs bg-white/[0.04] hover:bg-white/[0.08] text-slate-400 border border-white/[0.06] transition cursor-pointer"
                     >
                       Back
                     </button>
                     <button
                       type="submit"
                       disabled={authLoading || totpCode.length !== 6}
-                      className="w-2/3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-600/25 disabled:opacity-50"
+                      className="w-2/3 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-semibold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-cyan-600/20 disabled:opacity-50"
                     >
                       {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-                      <span>Validate & Establish Session</span>
+                      <span>Establish Session</span>
                     </button>
                   </div>
                 </form>
               )}
             </div>
 
-            <p className="text-[11px] text-slate-500 text-center mt-6">
-              FinSight AI Institutional Terminal &bull; Bank Identity Synchronization Active
+            <p className="text-[11px] text-slate-600 text-center mt-6 font-mono">
+              FinSight AI Institutional Terminal &bull; Bank Identity Sync Active
             </p>
           </div>
         </div>
 
-        {/* Pairing Modal */}
+        {/* Device Pairing Modal */}
         {showPairingModal && pendingOfficerInfo && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-            <div className="bg-[#0b1020] border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <div className="text-white font-bold text-sm">
-                  Pair Corporate Mobile Authenticator
+            <div className="bg-[#0C0E14] border border-white/[0.1] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
+                <div className="text-white font-semibold text-xs tracking-wider uppercase font-mono">
+                  Pair Corporate Authenticator
                 </div>
                 <button onClick={() => setShowPairingModal(false)} className="text-slate-400 hover:text-white cursor-pointer">
                   <X className="w-4 h-4" />
@@ -632,21 +639,21 @@ export default function App() {
               </div>
 
               <div className="text-xs text-slate-300 leading-relaxed space-y-3">
-                <p>
-                  Scan this QR code into <strong>Google Authenticator</strong> or <strong>Microsoft Authenticator</strong> on your phone:
+                <p className="text-slate-400">
+                  Scan this QR key with Google Authenticator or Microsoft Authenticator:
                 </p>
 
-                <div className="flex justify-center p-3 bg-white rounded-2xl w-fit mx-auto shadow-inner">
+                <div className="flex justify-center p-3 bg-white rounded-xl w-fit mx-auto shadow-inner">
                   <img 
                     src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(pendingOfficerInfo.otpauth_uri)}`} 
                     alt="Authenticator QR Code" 
-                    className="w-44 h-44 rounded"
+                    className="w-40 h-40 rounded"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <span className="text-[11px] text-slate-400">Manual Entry Base32 Secret:</span>
-                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#05070e] border border-slate-800 font-mono text-cyan-300 text-xs">
+                  <span className="text-[11px] text-slate-500 font-mono">Manual Base32 Secret:</span>
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#08090D] border border-white/[0.08] font-mono text-cyan-400 text-xs">
                     <span>{pendingOfficerInfo.totp_seed}</span>
                     <button
                       type="button"
@@ -663,7 +670,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setShowPairingModal(false)}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold cursor-pointer"
+                  className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-950 rounded-xl text-xs font-semibold cursor-pointer"
                 >
                   Done
                 </button>
@@ -679,27 +686,25 @@ export default function App() {
   // MAIN WORKSPACE (AUTHENTICATED)
   // ==========================================
   return (
-    <div className="min-h-screen bg-[#06080f] text-slate-100 flex flex-col font-sans antialiased selection:bg-indigo-500/30">
+    <div className="min-h-screen bg-[#07080B] text-slate-100 flex flex-col font-sans antialiased selection:bg-cyan-500/20">
       
-      {/* Header */}
-      <header className="border-b border-slate-800/80 bg-[#090d18]/90 backdrop-blur-md px-6 py-3 flex items-center justify-between sticky top-0 z-40">
+      {/* Top Header */}
+      <header className="border-b border-white/[0.06] bg-[#0A0C11]/90 backdrop-blur-md px-6 py-3 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-400 p-[1px] shadow-lg shadow-indigo-500/20">
-            <div className="h-full w-full bg-[#090d18] rounded-[11px] flex items-center justify-center">
-              <Shield className="w-5 h-5 text-indigo-400" />
-            </div>
+          <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-cyan-500/20 to-indigo-500/20 border border-cyan-500/30 flex items-center justify-center shadow-lg shadow-cyan-500/10">
+            <Shield className="w-4 h-4 text-cyan-400" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-sm font-bold tracking-wider text-white uppercase font-mono">FINSIGHT INTELLIGENCE</h1>
-              <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold uppercase ${
-                isChecker ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30' : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/30'
+              <h1 className="text-xs font-bold tracking-wider text-white uppercase font-mono">FINSIGHT AI</h1>
+              <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-medium uppercase border ${
+                isChecker ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
               }`}>
                 {isChecker ? "DESK: MLRO EXECUTIVE ADJUDICATION" : "DESK: ANALYST INVESTIGATION & TRIAGE"}
               </span>
             </div>
             <p className="text-[11px] text-slate-400">
-              {isChecker ? "Exclusive Statutory Account Freeze & FIU-IND Reporting Authority" : "Transaction Monitoring & Anomaly Evidence Compilation Scope"}
+              {isChecker ? "Statutory Account Freeze & Regulatory Reporting Authority" : "Transaction Monitoring & Anomaly Evidence Profiler"}
             </p>
           </div>
         </div>
@@ -707,17 +712,17 @@ export default function App() {
         <div className="flex items-center gap-3 text-xs">
           <button
             onClick={() => setGovModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition cursor-pointer font-sans text-xs font-medium"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] text-slate-300 transition cursor-pointer font-sans text-xs font-medium"
           >
             <History className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Personnel & Security Logs</span>
+            <span>Audit Logs</span>
           </button>
 
           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${
             isChecker ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300' : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300'
           }`}>
-            <BadgeCheck className="w-4 h-4" />
-            <span className="font-sans font-medium">{currentUser.full_name}</span>
+            <BadgeCheck className="w-3.5 h-3.5" />
+            <span className="font-sans font-medium text-xs">{currentUser.full_name}</span>
             <span className="text-[10px] font-mono px-1.5 py-0.2 rounded font-bold uppercase bg-black/40">
               {isChecker ? "CHECKER" : "MAKER"}
             </span>
@@ -725,7 +730,7 @@ export default function App() {
 
           <button
             onClick={handleLogout}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-rose-500/10 border border-slate-800 hover:border-rose-500/30 text-slate-400 hover:text-rose-400 transition cursor-pointer font-sans font-medium"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.03] hover:bg-rose-500/10 border border-white/[0.06] hover:border-rose-500/30 text-slate-400 hover:text-rose-400 transition cursor-pointer font-sans font-medium"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>Sign Out</span>
@@ -733,7 +738,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Workspace */}
+      {/* Main Workspace Container */}
       <main className="flex-1 max-w-[1600px] w-full mx-auto p-4 md:p-6 space-y-6">
         
         {/* =========================================================================
@@ -743,17 +748,17 @@ export default function App() {
           <div className="space-y-6">
             
             {/* Header Banner */}
-            <div className="bg-gradient-to-r from-[#0b1426] via-[#091020] to-[#070b16] border border-cyan-500/30 rounded-2xl p-5 shadow-2xl flex flex-wrap items-center justify-between gap-4">
+            <div className="bg-[#0C0E14] border border-white/[0.08] rounded-2xl p-5 shadow-xl flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-cyan-500/20 text-cyan-400 rounded-xl">
+                <div className="p-2.5 bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 rounded-xl">
                   <Inbox className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-bold text-white uppercase font-mono tracking-wider">
-                    Executive Adjudication Inbox & Statutory Clearance Desk
+                  <h2 className="text-xs font-bold text-white uppercase font-mono tracking-wider">
+                    Executive Adjudication Queue & Four-Eyes Clearance
                   </h2>
-                  <p className="text-xs text-slate-400">
-                    Review investigative findings submitted by AML Analysts. Under bank regulations, input sliders and test creation are prohibited on this desk.
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Review triaged anomalies submitted by AML Analysts. Under Segregation of Duties (SoD), input sliders are disabled on this terminal.
                   </p>
                 </div>
               </div>
@@ -762,41 +767,41 @@ export default function App() {
                 <button
                   onClick={handleIngestStream}
                   disabled={ingestingStream}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 rounded-xl text-xs font-mono transition cursor-pointer shadow-sm"
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-mono transition cursor-pointer shadow-sm disabled:opacity-50"
                   title="Pull fresh high-risk transfers from the 1M database table"
                 >
                   <Radio className={`w-3.5 h-3.5 ${ingestingStream ? 'animate-spin text-cyan-400' : 'text-indigo-400'}`} />
-                  <span>{ingestingStream ? "Ingesting..." : "Ingest Inbound Stream"}</span>
+                  <span>{ingestingStream ? "Ingesting Alert..." : "Ingest Inbound Stream"}</span>
                 </button>
 
                 <button
                   onClick={() => fetchExecutiveQueue()}
                   disabled={loadingQueue}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 rounded-xl text-xs font-mono text-cyan-400 border border-slate-800 transition cursor-pointer"
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-white/[0.04] hover:bg-white/[0.08] rounded-xl text-xs font-mono text-cyan-400 border border-white/[0.08] transition cursor-pointer"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${loadingQueue ? 'animate-spin' : ''}`} />
-                  <span>Refresh Inbox</span>
+                  <span>Refresh Queue</span>
                 </button>
               </div>
             </div>
 
             {/* Notifications */}
             {refreshNotification && (
-              <div className="p-3 bg-cyan-500/10 border border-cyan-500/30 rounded-xl text-xs text-cyan-300 font-mono flex items-center justify-between animate-in fade-in duration-200">
+              <div className="p-3 bg-cyan-500/10 border border-cyan-500/20 rounded-xl text-xs text-cyan-300 font-mono flex items-center justify-between animate-in fade-in duration-150">
                 <span>{refreshNotification}</span>
-                <span className="text-[10px] text-slate-400">Database Synced</span>
+                <span className="text-[10px] text-slate-500 font-mono">1M-Row Partition Synced</span>
               </div>
             )}
 
             {executionSuccessNotice && (
-              <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/40 rounded-xl text-xs text-emerald-300 font-mono flex items-center gap-2 shadow-lg shadow-emerald-500/5 animate-in fade-in duration-200">
+              <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 font-mono flex items-center gap-2 shadow-lg shadow-emerald-500/5 animate-in fade-in duration-150">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                 <span>{executionSuccessNotice}</span>
               </div>
             )}
 
             {errorMessage && (
-              <div className="p-3.5 bg-rose-500/10 border border-rose-500/40 rounded-xl text-xs text-rose-300 font-mono flex items-center gap-2 animate-in fade-in duration-200">
+              <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 font-mono flex items-center gap-2 animate-in fade-in duration-150">
                 <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
                 <span>{errorMessage}</span>
               </div>
@@ -807,11 +812,11 @@ export default function App() {
               
               {/* Left Column: Case Inbox Tabs */}
               <div className="col-span-12 lg:col-span-4 space-y-3">
-                <div className="grid grid-cols-2 p-1 bg-[#060912] rounded-xl border border-slate-800 text-xs font-semibold">
+                <div className="grid grid-cols-2 p-1 bg-[#090B10] rounded-xl border border-white/[0.06] text-xs font-medium">
                   <button
                     onClick={() => setInboxTab('pending')}
                     className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer ${
-                      inboxTab === 'pending' ? 'bg-cyan-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+                      inboxTab === 'pending' ? 'bg-cyan-600/30 text-cyan-300 border border-cyan-500/40 shadow-sm' : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
                     <Clock className="w-3.5 h-3.5" />
@@ -820,7 +825,7 @@ export default function App() {
                   <button
                     onClick={() => setInboxTab('finalized')}
                     className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer ${
-                      inboxTab === 'finalized' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+                      inboxTab === 'finalized' ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 shadow-sm' : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
                     <Archive className="w-3.5 h-3.5" />
@@ -828,17 +833,17 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="space-y-2.5 max-h-[640px] overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-[640px] overflow-y-auto pr-1">
                   {displayedCases.length === 0 ? (
-                    <div className="p-12 text-center text-xs text-slate-500 bg-[#0b1020] border border-slate-800 rounded-2xl italic space-y-2">
+                    <div className="p-12 text-center text-xs text-slate-500 bg-[#0C0E14] border border-white/[0.06] rounded-2xl italic space-y-2">
                       <Inbox className="w-6 h-6 mx-auto text-slate-600" />
                       <div>No {inboxTab} cases in registry.</div>
                       {inboxTab === 'pending' && (
                         <button
                           onClick={handleIngestStream}
-                          className="mt-2 text-[11px] text-indigo-400 hover:underline cursor-pointer"
+                          className="mt-2 text-[11px] text-cyan-400 hover:underline cursor-pointer"
                         >
-                          + Click "Ingest Inbound Stream" to add cases
+                          + Ingest sample transaction stream
                         </button>
                       )}
                     </div>
@@ -849,18 +854,18 @@ export default function App() {
                         onClick={() => setSelectedCase(item)}
                         className={`p-4 rounded-xl border text-xs cursor-pointer transition space-y-2 ${
                           selectedCase?.case_id === item.case_id
-                            ? 'bg-cyan-950/20 border-cyan-500/60 ring-1 ring-cyan-500/30'
-                            : 'bg-[#0b1020] border-slate-800 hover:border-slate-700'
+                            ? 'bg-[#10141E] border-cyan-500/50 shadow-lg shadow-cyan-500/5'
+                            : 'bg-[#0C0E14] border-white/[0.06] hover:border-white/[0.12]'
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="font-mono font-bold text-white">{item.case_id}</span>
-                          <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold uppercase ${
+                          <span className={`text-[9px] font-mono px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
                             item.status === 'FINALIZED'
-                              ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30'
-                              : 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 animate-pulse'
+                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                              : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                           }`}>
-                            {item.status === 'FINALIZED' ? item.final_verdict : "PENDING ADJUDICATION"}
+                            {item.status === 'FINALIZED' ? item.final_verdict : (item.priority || "P1 CRITICAL")}
                           </span>
                         </div>
 
@@ -873,7 +878,7 @@ export default function App() {
                         </div>
 
                         {item.maker_status && (
-                          <div className="text-[10px] text-amber-300 pt-1 border-t border-slate-800/80 flex items-center justify-between">
+                          <div className="text-[10px] text-amber-300 pt-1 border-t border-white/[0.04] flex items-center justify-between">
                             <span>Maker: {item.maker_status.decision}</span>
                             <span className="text-slate-500 font-mono">{item.maker_status.officer?.split(' ')[0] || 'Analyst'}</span>
                           </div>
@@ -887,13 +892,13 @@ export default function App() {
               {/* Right Column: Case Dossier & Adjudication Controls */}
               <div className="col-span-12 lg:col-span-8 space-y-6">
                 {selectedCase ? (
-                  <div className="bg-[#0b1020] border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-6">
+                  <div className="bg-[#0C0E14] border border-white/[0.08] rounded-2xl p-6 shadow-xl space-y-6">
                     
-                    <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                    <div className="flex items-center justify-between border-b border-white/[0.06] pb-4">
                       <div>
                         <div className="flex items-center gap-2">
-                          <h3 className="text-base font-bold text-white font-mono">{selectedCase.case_id}</h3>
-                          <span className="text-xs font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
+                          <h3 className="text-sm font-bold text-white font-mono">{selectedCase.case_id}</h3>
+                          <span className="text-[11px] font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
                             Txn: {selectedCase.transaction_id}
                           </span>
                         </div>
@@ -911,40 +916,40 @@ export default function App() {
                     </div>
 
                     {/* Maker Recommendation Banner */}
-                    <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-1.5 text-xs">
-                      <div className="flex items-center justify-between text-amber-300 font-bold">
-                        <span className="flex items-center gap-1.5">
-                          <UserCheck className="w-4 h-4" /> Analyst Recommendation (Maker Step)
+                    <div className="p-4 rounded-xl bg-amber-500/[0.06] border border-amber-500/20 space-y-1.5 text-xs">
+                      <div className="flex items-center justify-between text-amber-300 font-medium">
+                        <span className="flex items-center gap-1.5 font-mono uppercase text-[11px]">
+                          <UserCheck className="w-3.5 h-3.5" /> Analyst Recommendation (Maker Step)
                         </span>
-                        <span className="font-mono text-[11px] bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/40">
+                        <span className="font-mono text-[10px] bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30 font-bold">
                           {selectedCase.maker_status?.decision || "RECOMMEND_REJECT"}
                         </span>
                       </div>
-                      <p className="text-slate-200 italic font-sans leading-relaxed">
+                      <p className="text-slate-300 italic font-sans leading-relaxed text-xs">
                         "{selectedCase.maker_status?.summary || "Automated anomaly flagged by multi-agent engine. Review required."}"
                       </p>
-                      <div className="text-[10px] text-slate-400 font-mono">
+                      <div className="text-[10px] text-slate-500 font-mono">
                         Investigated by: {selectedCase.maker_status?.officer || "Rohan Verma (AML-33012)"}
                       </div>
                     </div>
 
                     {/* Metrics Breakdown */}
                     <div className="grid grid-cols-3 gap-3 text-xs font-mono">
-                      <div className="p-3 bg-[#060912] rounded-xl border border-slate-800">
+                      <div className="p-3 bg-[#08090D] rounded-xl border border-white/[0.06]">
                         <div className="text-[10px] text-slate-500 uppercase">Transaction Value</div>
                         <div className="text-sm font-bold text-cyan-400 mt-0.5">
                           ₹{Number(selectedCase.amount).toLocaleString('en-IN')}
                         </div>
                       </div>
-                      <div className="p-3 bg-[#060912] rounded-xl border border-slate-800">
+                      <div className="p-3 bg-[#08090D] rounded-xl border border-white/[0.06]">
                         <div className="text-[10px] text-slate-500 uppercase">30-Day Historical Baseline</div>
-                        <div className="text-sm font-bold text-slate-200 mt-0.5">
+                        <div className="text-sm font-bold text-slate-300 mt-0.5">
                           ₹{Number(selectedCase.historical_avg).toLocaleString('en-IN')}
                         </div>
                       </div>
-                      <div className="p-3 bg-[#060912] rounded-xl border border-slate-800">
+                      <div className="p-3 bg-[#08090D] rounded-xl border border-white/[0.06]">
                         <div className="text-[10px] text-slate-500 uppercase">Settlement Channel</div>
-                        <div className="text-sm font-bold text-slate-200 mt-0.5">
+                        <div className="text-sm font-bold text-slate-300 mt-0.5">
                           {selectedCase.channel}
                         </div>
                       </div>
@@ -952,15 +957,15 @@ export default function App() {
 
                     {/* Agent Findings */}
                     <div className="space-y-2">
-                      <h4 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">
+                      <h4 className="text-[11px] font-mono font-semibold text-slate-400 uppercase tracking-wider">
                         Multi-Agent Evidence & Risk Deltas ({selectedCase.findings?.length || 0})
                       </h4>
                       <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
                         {selectedCase.findings?.map((f, i) => (
-                          <div key={i} className="p-3 rounded-xl bg-[#060912] border border-slate-800 text-xs space-y-1">
+                          <div key={i} className="p-3 rounded-xl bg-[#08090D] border border-white/[0.06] text-xs space-y-1">
                             <div className="flex items-center justify-between">
                               <span className="font-mono font-bold text-indigo-400">{f.agent}</span>
-                              <span className="font-mono text-cyan-400 font-bold bg-slate-900 px-2 py-0.5 rounded border border-slate-800 text-[10px]">
+                              <span className="font-mono text-cyan-400 font-bold bg-white/[0.03] px-2 py-0.5 rounded border border-white/[0.06] text-[10px]">
                                 +{f.score_delta.toFixed(2)} Delta
                               </span>
                             </div>
@@ -972,14 +977,14 @@ export default function App() {
 
                     {/* Statutory Policies */}
                     <div className="space-y-2">
-                      <h4 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">
+                      <h4 className="text-[11px] font-mono font-semibold text-slate-400 uppercase tracking-wider">
                         Retrieved Statutory Mandates (pgvector RRF)
                       </h4>
                       <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
                         {selectedCase.retrieved_policies?.map((p, idx) => (
-                          <div key={idx} className="p-2.5 rounded-xl bg-[#060912] border border-slate-800 text-xs space-y-1">
+                          <div key={idx} className="p-2.5 rounded-xl bg-[#08090D] border border-white/[0.06] text-xs space-y-1">
                             <div className="flex items-center justify-between">
-                              <span className="font-bold text-slate-200 text-xs">{p.document_title}</span>
+                              <span className="font-medium text-slate-200 text-xs">{p.document_title}</span>
                               <span className="text-[10px] font-mono text-cyan-400">{p.citation}</span>
                             </div>
                             <p className="text-slate-400 text-[11px] italic">"{p.snippet}"</p>
@@ -990,27 +995,27 @@ export default function App() {
 
                     {/* Statutory Adjudication Controls */}
                     {selectedCase.status === 'FINALIZED' ? (
-                      <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between shadow-lg">
+                      <div className="p-4 rounded-xl bg-emerald-500/[0.06] border border-emerald-500/20 text-emerald-300 text-xs flex items-center justify-between shadow-lg">
                         <div className="space-y-1">
-                          <div className="font-bold flex items-center gap-1.5">
+                          <div className="font-medium flex items-center gap-1.5">
                             <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Ruling Sealed & Recorded in Ledger
                           </div>
-                          <div className="text-[11px] text-slate-300 font-mono">
+                          <div className="text-[11px] text-slate-400 font-mono">
                             Verdict: <strong className="text-white">{selectedCase.final_verdict}</strong> by {selectedCase.checker_status?.officer || "MLRO"}
                           </div>
                         </div>
 
                         <button
                           onClick={downloadAuditReport}
-                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-sans font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-lg shadow-indigo-600/20"
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-sans font-medium flex items-center gap-1.5 transition cursor-pointer shadow-lg shadow-indigo-600/20"
                         >
                           <Download className="w-3.5 h-3.5" />
                           <span>Export SAR Dossier</span>
                         </button>
                       </div>
                     ) : (
-                      <div className="pt-4 border-t border-slate-800 space-y-3">
-                        <h4 className="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                      <div className="pt-4 border-t border-white/[0.06] space-y-3">
+                        <h4 className="text-xs font-mono font-semibold text-white uppercase tracking-wider flex items-center gap-1.5">
                           <Scale className="w-4 h-4 text-cyan-400" /> Execute Official MLRO Statutory Ruling
                         </h4>
 
@@ -1020,7 +1025,7 @@ export default function App() {
                             <select
                               value={checkerDecision}
                               onChange={(e) => setCheckerDecision(e.target.value)}
-                              className="w-full bg-[#060912] border border-slate-700 rounded-xl p-2.5 text-slate-200 font-mono focus:outline-none focus:border-cyan-500 text-xs"
+                              className="w-full bg-[#08090D] border border-white/[0.08] rounded-xl p-2.5 text-slate-200 font-mono focus:outline-none focus:border-cyan-500/60 text-xs"
                             >
                               <option value="CONFIRMED_REJECTED">CONFIRM REJECT (Freeze Account & File SAR with FIU-IND)</option>
                               <option value="CONFIRMED_ESCALATED">CONFIRM ESCALATE (Refer to Law Enforcement / Special SIU)</option>
@@ -1035,7 +1040,7 @@ export default function App() {
                               value={checkerNotes}
                               onChange={(e) => setCheckerNotes(e.target.value)}
                               placeholder="Record formal statutory memo for regulatory logs..."
-                              className="w-full bg-[#060912] border border-slate-700 rounded-xl p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500 text-xs"
+                              className="w-full bg-[#08090D] border border-white/[0.08] rounded-xl p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500/60 text-xs"
                             />
                           </div>
                         </div>
@@ -1044,7 +1049,7 @@ export default function App() {
                           <button
                             onClick={handleCheckerExecute}
                             disabled={executingRuling}
-                            className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-6 py-2.5 rounded-xl text-xs transition cursor-pointer flex items-center gap-2 shadow-lg shadow-cyan-500/20 disabled:opacity-50"
+                            className="bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-semibold px-6 py-2.5 rounded-xl text-xs transition cursor-pointer flex items-center gap-2 shadow-lg shadow-cyan-600/20 disabled:opacity-50"
                           >
                             {executingRuling ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Scale className="w-4 h-4" />}
                             <span>{executingRuling ? "Recording on Core Ledger..." : "Execute Binding Ruling (Checker)"}</span>
@@ -1055,7 +1060,7 @@ export default function App() {
 
                   </div>
                 ) : (
-                  <div className="p-16 text-center text-xs text-slate-500 bg-[#0b1020] border border-slate-800 rounded-2xl italic">
+                  <div className="p-16 text-center text-xs text-slate-500 bg-[#0C0E14] border border-white/[0.06] rounded-2xl italic">
                     Select a case from the inbox on the left to inspect its full evidence dossier.
                   </div>
                 )}
@@ -1070,14 +1075,14 @@ export default function App() {
              ========================================================================= */
           <div className="space-y-6">
             
-            <section className="bg-gradient-to-b from-[#0b1020] to-[#080c18] border border-slate-800 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-5 pb-4 border-b border-slate-800/80">
+            <section className="bg-[#0C0E14] border border-white/[0.08] rounded-2xl p-6 shadow-xl relative overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-5 pb-4 border-b border-white/[0.06]">
                 <div>
-                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400 font-mono">
                     <Sliders className="w-4 h-4 text-indigo-400" />
                     <span>Analyst Investigation & Anomaly Profiling Desk</span>
                   </div>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
+                  <p className="text-xs text-slate-400 mt-0.5">
                     Input transaction parameters and trigger multi-agent investigation.
                   </p>
                 </div>
@@ -1092,7 +1097,7 @@ export default function App() {
                     type="text"
                     value={formData.customer_name}
                     onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
-                    className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500 transition font-medium"
+                    className="w-full bg-[#08090D] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500/60 transition font-medium"
                   />
                 </div>
 
@@ -1104,7 +1109,7 @@ export default function App() {
                     type="text"
                     value={formData.beneficiary_name}
                     onChange={(e) => setFormData({ ...formData, beneficiary_name: e.target.value })}
-                    className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500 transition font-medium"
+                    className="w-full bg-[#08090D] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500/60 transition font-medium"
                   />
                 </div>
 
@@ -1115,7 +1120,7 @@ export default function App() {
                   <select
                     value={formData.channel}
                     onChange={(e) => setFormData({ ...formData, channel: e.target.value })}
-                    className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 font-mono focus:outline-none focus:border-indigo-500 transition font-medium"
+                    className="w-full bg-[#08090D] border border-white/[0.08] rounded-xl px-3 py-2.5 text-slate-200 font-mono focus:outline-none focus:border-indigo-500/60 transition font-medium"
                   >
                     <option value="IMPS">IMPS (Immediate Transfer)</option>
                     <option value="NEFT">NEFT (Batch Settlement)</option>
@@ -1131,7 +1136,7 @@ export default function App() {
                     type="button"
                     onClick={() => setFormData({ ...formData, beneficiary_is_new: !formData.beneficiary_is_new })}
                     className={`w-full py-2.5 px-4 rounded-xl border text-xs font-semibold flex items-center justify-between transition cursor-pointer ${
-                      formData.beneficiary_is_new ? 'bg-amber-500/10 border-amber-500/40 text-amber-300' : 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'
+                      formData.beneficiary_is_new ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
                     }`}
                   >
                     <div className="flex items-center gap-2">
@@ -1144,7 +1149,7 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="md:col-span-6 bg-[#060912] p-4 rounded-xl border border-slate-800/80 space-y-2.5">
+                <div className="md:col-span-6 bg-[#08090D] p-4 rounded-xl border border-white/[0.06] space-y-2.5">
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-slate-400 font-medium">Transaction Amount</span>
                     <span className="font-mono text-cyan-400 font-bold text-base">
@@ -1162,7 +1167,7 @@ export default function App() {
                   />
                 </div>
 
-                <div className="md:col-span-6 bg-[#060912] p-4 rounded-xl border border-slate-800/80 space-y-2.5">
+                <div className="md:col-span-6 bg-[#08090D] p-4 rounded-xl border border-white/[0.06] space-y-2.5">
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-slate-400 font-medium">30-Day Historical Average Baseline</span>
                     <span className="font-mono text-slate-300 font-semibold text-xs">
@@ -1189,7 +1194,7 @@ export default function App() {
                     type="text"
                     value={formData.narration}
                     onChange={(e) => setFormData({ ...formData, narration: e.target.value })}
-                    className="w-full bg-[#060912] border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500 transition font-medium"
+                    className="w-full bg-[#08090D] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-500/60 transition font-medium"
                   />
                 </div>
 
@@ -1197,7 +1202,7 @@ export default function App() {
                   <button
                     onClick={handleSimulate}
                     disabled={loading}
-                    className="w-full bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-semibold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/30 disabled:opacity-50"
+                    className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/30 disabled:opacity-50"
                   >
                     {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                     <span>Trigger Multi-Agent Audit</span>
@@ -1210,7 +1215,7 @@ export default function App() {
             {caseData && (
               <div>
                 {caseData.status === 'PENDING_MAKER' ? (
-                  <div className="p-4 rounded-2xl border bg-amber-500/10 border-amber-500/30 text-amber-200 flex items-center justify-between shadow-lg">
+                  <div className="p-4 rounded-2xl border bg-amber-500/[0.06] border-amber-500/20 text-amber-200 flex items-center justify-between shadow-lg">
                     <div className="flex items-center gap-3.5">
                       <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400">
                         <UserCheck className="w-5 h-5 animate-pulse" />
@@ -1234,7 +1239,7 @@ export default function App() {
                     </button>
                   </div>
                 ) : caseData.status === 'PENDING_CHECKER' ? (
-                  <div className="p-4 rounded-2xl border bg-cyan-500/10 border-cyan-500/30 text-cyan-200 flex items-center justify-between shadow-lg">
+                  <div className="p-4 rounded-2xl border bg-cyan-500/[0.06] border-cyan-500/20 text-cyan-200 flex items-center justify-between shadow-lg">
                     <div className="flex items-center gap-3.5">
                       <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-400">
                         <ShieldCheck className="w-5 h-5" />
@@ -1249,12 +1254,12 @@ export default function App() {
                       </div>
                     </div>
 
-                    <span className="text-xs font-mono px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-cyan-400">
+                    <span className="text-xs font-mono px-3 py-1.5 rounded-xl bg-slate-900 border border-white/[0.06] text-cyan-400">
                       Transmitted &bull; In MLRO Queue
                     </span>
                   </div>
                 ) : (
-                  <div className="p-4 rounded-2xl border bg-emerald-500/10 border-emerald-500/30 text-emerald-200 flex items-center justify-between shadow-lg">
+                  <div className="p-4 rounded-2xl border bg-emerald-500/[0.06] border-emerald-500/20 text-emerald-200 flex items-center justify-between shadow-lg">
                     <div className="flex items-center gap-3.5">
                       <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400">
                         <CheckCircle2 className="w-5 h-5" />
@@ -1278,18 +1283,18 @@ export default function App() {
 
             {/* Evidence & Telemetry */}
             <div className="grid grid-cols-12 gap-6">
-              <div className="col-span-12 lg:col-span-4 bg-[#0b1020] border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+              <div className="col-span-12 lg:col-span-4 bg-[#0C0E14] border border-white/[0.08] rounded-2xl p-5 shadow-xl space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 font-mono">
                     <TrendingUp className="w-4 h-4 text-indigo-400" /> Risk Index
                   </span>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 text-amber-400 font-bold">
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/[0.04] text-amber-400 font-bold">
                     Gate: 70%
                   </span>
                 </div>
 
                 <div className="flex items-baseline justify-between">
-                  <span className="text-4xl font-mono font-extrabold">
+                  <span className="text-4xl font-mono font-extrabold text-white">
                     {riskPercent !== null ? `${riskPercent}%` : '--'}
                   </span>
                   <span className="text-xs font-mono font-semibold uppercase">
@@ -1297,7 +1302,7 @@ export default function App() {
                   </span>
                 </div>
 
-                <div className="w-full bg-slate-900 h-2.5 rounded-full overflow-hidden">
+                <div className="w-full bg-[#08090D] h-2.5 rounded-full overflow-hidden border border-white/[0.04]">
                   <div 
                     className={`h-full rounded-full ${riskPercent >= 70 ? 'bg-rose-500' : 'bg-emerald-500'}`}
                     style={{ width: `${riskPercent || 0}%` }}
@@ -1305,14 +1310,14 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="col-span-12 lg:col-span-8 bg-[#0b1020] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-3">
-                <h4 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">
+              <div className="col-span-12 lg:col-span-8 bg-[#0C0E14] border border-white/[0.08] rounded-2xl p-6 shadow-xl space-y-3">
+                <h4 className="text-xs font-mono font-semibold text-slate-400 uppercase tracking-wider">
                   Investigative Evidence & Findings ({caseData?.findings?.length || 0})
                 </h4>
-                <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
                   {caseData?.findings?.length > 0 ? (
                     caseData.findings.map((f, i) => (
-                      <div key={i} className="p-3 rounded-xl bg-[#060912] border border-slate-800 text-xs space-y-1">
+                      <div key={i} className="p-3 rounded-xl bg-[#08090D] border border-white/[0.06] text-xs space-y-1">
                         <div className="flex items-center justify-between font-mono">
                           <span className="text-indigo-400 font-bold">{f.agent}</span>
                           <span className="text-cyan-400 font-bold">+{f.score_delta.toFixed(2)} Delta</span>
@@ -1337,34 +1342,34 @@ export default function App() {
       {/* Maker Modal */}
       {makerModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-          <div className="bg-[#0b1020] border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="bg-[#0C0E14] border border-white/[0.1] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
               <div className="flex items-center gap-3">
-                <div className="p-3 bg-amber-500/10 text-amber-400 rounded-xl border border-amber-500/20">
-                  <UserCheck className="w-6 h-6" />
+                <div className="p-2.5 bg-amber-500/10 text-amber-400 rounded-xl border border-amber-500/20">
+                  <UserCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Analyst Recommendation (Maker Step)</h3>
+                  <h3 className="text-xs font-bold text-white uppercase font-mono tracking-wider">Analyst Recommendation (Maker Step)</h3>
                   <p className="text-xs text-slate-400 font-mono">Case: {caseData?.case_id}</p>
                 </div>
               </div>
               <button onClick={() => setMakerModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="space-y-4">
-              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-300 leading-relaxed">
+              <div className="p-3 bg-amber-500/[0.06] border border-amber-500/20 rounded-xl text-xs text-amber-300 leading-relaxed">
                 As an Analyst (Maker), submit your findings and proposed course of action. This case will be transmitted to the MLRO Executive Queue for independent approval.
               </div>
 
               <div className="space-y-3 text-xs">
                 <div>
-                  <label className="text-slate-300 block mb-1 font-semibold">Proposed Statutory Action</label>
+                  <label className="text-slate-400 block mb-1 font-medium">Proposed Statutory Action</label>
                   <select
                     value={makerDecision}
                     onChange={(e) => setMakerDecision(e.target.value)}
-                    className="w-full bg-[#060912] border border-slate-700 rounded-xl p-3 text-slate-200 font-mono focus:outline-none focus:border-amber-500 font-semibold"
+                    className="w-full bg-[#08090D] border border-white/[0.08] rounded-xl p-3 text-slate-200 font-mono focus:outline-none focus:border-amber-500/60 font-semibold text-xs"
                   >
                     <option value="RECOMMEND_REJECT">RECOMMEND REJECT (Recommend Account Freeze & FIU SAR)</option>
                     <option value="RECOMMEND_ESCALATE">RECOMMEND ESCALATE (Refer to Legal / FIU Enforcement)</option>
@@ -1373,13 +1378,13 @@ export default function App() {
                 </div>
 
                 <div>
-                  <label className="text-slate-300 block mb-1 font-semibold">Analyst Findings & Evidence Rationale</label>
+                  <label className="text-slate-400 block mb-1 font-medium">Analyst Findings & Evidence Rationale</label>
                   <textarea
                     rows={3}
                     value={makerNotes}
                     onChange={(e) => setMakerNotes(e.target.value)}
                     placeholder="e.g. Beneficiary matched offshore shell pattern; customer velocity spike is 18.8x..."
-                    className="w-full bg-[#060912] border border-slate-700 rounded-xl p-3 text-slate-200 focus:outline-none focus:border-amber-500"
+                    className="w-full bg-[#08090D] border border-white/[0.08] rounded-xl p-3 text-slate-200 focus:outline-none focus:border-amber-500/60 text-xs"
                   />
                 </div>
               </div>
@@ -1391,7 +1396,7 @@ export default function App() {
                 <button
                   onClick={handleMakerSubmit}
                   disabled={loading}
-                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-5 py-2.5 rounded-xl text-xs transition cursor-pointer flex items-center gap-2"
+                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-5 py-2.5 rounded-xl text-xs transition cursor-pointer flex items-center gap-2"
                 >
                   {loading && <RefreshCw className="w-4 h-4 animate-spin" />}
                   <span>Transmit to MLRO Checker Queue</span>
@@ -1405,14 +1410,14 @@ export default function App() {
       {/* Governance Modal */}
       {govModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-          <div className="bg-[#0b1020] border border-slate-800 rounded-3xl max-w-3xl w-full p-6 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
+          <div className="bg-[#0C0E14] border border-white/[0.1] rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-white/[0.06] pb-4">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-cyan-500/10 text-cyan-400 rounded-xl border border-cyan-500/20">
                   <ShieldCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white">Personnel Directory & Security Audit Logs</h3>
+                  <h3 className="text-xs font-bold text-white uppercase font-mono tracking-wider">Audit Trail & Governance Console</h3>
                   <p className="text-xs text-slate-400 font-mono">Pre-Provisioned Officers & Immutable System Events</p>
                 </div>
               </div>
@@ -1421,11 +1426,11 @@ export default function App() {
               </button>
             </div>
 
-            <div className="flex gap-2 p-1 bg-[#060912] rounded-xl border border-slate-800 text-xs font-semibold w-fit">
+            <div className="flex gap-2 p-1 bg-[#08090D] rounded-xl border border-white/[0.06] text-xs font-medium w-fit">
               <button
                 onClick={() => setGovTab('directory')}
                 className={`px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 transition cursor-pointer ${
-                  govTab === 'directory' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                  govTab === 'directory' ? 'bg-cyan-600/30 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-white'
                 }`}
               >
                 <Users className="w-3.5 h-3.5" />
@@ -1434,7 +1439,7 @@ export default function App() {
               <button
                 onClick={() => setGovTab('logs')}
                 className={`px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 transition cursor-pointer ${
-                  govTab === 'logs' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                  govTab === 'logs' ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40' : 'text-slate-400 hover:text-white'
                 }`}
               >
                 <History className="w-3.5 h-3.5" />
@@ -1445,27 +1450,27 @@ export default function App() {
             <div className="max-h-[380px] overflow-y-auto space-y-2.5 pr-1">
               {govTab === 'directory' ? (
                 officerList.map((off, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-3.5 rounded-xl bg-[#060912] border border-slate-800/80 text-xs">
+                  <div key={idx} className="flex items-center justify-between p-3.5 rounded-xl bg-[#08090D] border border-white/[0.06] text-xs">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center font-bold text-slate-300 font-mono">
+                      <div className="w-8 h-8 rounded-full bg-white/[0.04] border border-white/[0.06] flex items-center justify-center font-bold text-slate-300 font-mono">
                         {off.full_name.charAt(0)}
                       </div>
                       <div>
-                        <div className="font-semibold text-white flex items-center gap-2">
+                        <div className="font-medium text-white flex items-center gap-2">
                           <span>{off.full_name}</span>
                           {off.username === currentUser.username && (
-                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-mono">ACTIVE</span>
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-mono">ACTIVE</span>
                           )}
                         </div>
-                        <div className="text-[11px] text-slate-400 font-mono">
+                        <div className="text-[11px] text-slate-500 font-mono">
                           Handle: {off.username} &bull; Badge: {off.badge_id}
                         </div>
                       </div>
                     </div>
 
                     <div className="text-right space-y-1">
-                      <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold uppercase border ${
-                        off.role === 'MLRO_OFFICER' ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30' : 'bg-indigo-500/10 text-indigo-300 border-indigo-500/30'
+                      <span className={`text-[9px] px-2 py-0.5 rounded font-mono font-bold uppercase border ${
+                        off.role === 'MLRO_OFFICER' ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/20' : 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20'
                       }`}>
                         {off.role === 'MLRO_OFFICER' ? "CHECKER" : "MAKER"}
                       </span>
@@ -1475,7 +1480,7 @@ export default function App() {
                 ))
               ) : (
                 auditLogs.map((log, idx) => (
-                  <div key={idx} className="p-3 rounded-xl bg-[#060912] border border-slate-800/80 text-xs space-y-1 font-mono">
+                  <div key={idx} className="p-3 rounded-xl bg-[#08090D] border border-white/[0.06] text-xs space-y-1 font-mono">
                     <div className="flex items-center justify-between">
                       <span className="text-cyan-400 font-bold">{log.event_type}</span>
                       <span className="text-[10px] text-slate-500">
@@ -1490,8 +1495,8 @@ export default function App() {
               )}
             </div>
 
-            <div className="flex justify-end pt-2 border-t border-slate-800/80">
-              <button onClick={() => setGovModalOpen(false)} className="px-5 py-2 rounded-xl text-xs bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition cursor-pointer">
+            <div className="flex justify-end pt-2 border-t border-white/[0.06]">
+              <button onClick={() => setGovModalOpen(false)} className="px-5 py-2 rounded-xl text-xs bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 border border-white/[0.06] transition cursor-pointer">
                 Close Panel
               </button>
             </div>
