@@ -8,17 +8,12 @@ from fastapi import HTTPException, Security, status, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import text
 from app.database import engine
-try:
-    from app.database import sync_engine
-    engine = sync_engine
-except ImportError:
-    pass
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "prod-fin-compliance-enterprise-secret-key-9918237461")
 ALGORITHM = "HS256"
 SESSION_EXPIRE_HOURS = 8
 
-# INSTITUTIONAL PRE-PROVISIONED ROSTER WITH CRYPTOGRAPHIC TOTP SEEDS (RFC 6238)
+# INSTITUTIONAL PRE-PROVISIONED ROSTER
 PRE_PROVISIONED_ROSTER = {
     "officer.sharma": {
         "username": "officer.sharma",
@@ -27,7 +22,16 @@ PRE_PROVISIONED_ROSTER = {
         "role": "MLRO_OFFICER",
         "badge_id": "AML-88219",
         "department": "Special Investigations Unit (SIU)",
-        "totp_seed": "JBSWY3DPEHPK3PXP" # Base32 Secret for Google/Microsoft Authenticator
+        "totp_seed": "JBSWY3DPEHPK3PXP"
+    },
+    "officer.kapoor": {
+        "username": "officer.kapoor",
+        "password_hash": hashlib.sha256("Senior@2026".encode()).hexdigest(),
+        "full_name": "Vikram Kapoor",
+        "role": "MLRO_OFFICER",
+        "badge_id": "AML-99001",
+        "department": "Executive Compliance Directorate",
+        "totp_seed": "JBSWY3DPEHPK3PXP"
     },
     "analyst.verma": {
         "username": "analyst.verma",
@@ -36,16 +40,7 @@ PRE_PROVISIONED_ROSTER = {
         "role": "ANALYST",
         "badge_id": "AML-33012",
         "department": "Transaction Monitoring Operations",
-        "totp_seed": "HXDMVJECJJWSRB3H" # Base32 Secret for Google/Microsoft Authenticator
-    },
-    "auditor.rao": {
-        "username": "auditor.rao",
-        "password_hash": hashlib.sha256("Auditor@2026".encode()).hexdigest(),
-        "full_name": "Kavita Rao",
-        "role": "AUDITOR",
-        "badge_id": "AUD-90114",
-        "department": "Internal Compliance Audit",
-        "totp_seed": "MFRGGZDFMY2TOOJX" # Base32 Secret for Google/Microsoft Authenticator
+        "totp_seed": "HXDMVJECJJWSRB3H"
     }
 }
 
@@ -70,8 +65,6 @@ def init_security_tables():
                     totp_seed VARCHAR(64) NOT NULL,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 );
-
-                ALTER TABLE compliance_officers ADD COLUMN IF NOT EXISTS totp_seed VARCHAR(64) DEFAULT 'JBSWY3DPEHPK3PXP';
 
                 CREATE TABLE IF NOT EXISTS revoked_tokens (
                     token_hash VARCHAR(64) PRIMARY KEY,
@@ -122,21 +115,10 @@ def log_security_event(event_type: str, username: str = None, badge_id: str = No
         print(f"[Audit Log Warning] {err}")
 
 def verify_totp_code(secret_seed: str, input_code: str) -> bool:
-    """Validates 6-digit rolling code against real RFC 6238 time steps."""
-    code = input_code.strip()
-    try:
-        totp = pyotp.TOTP(secret_seed)
-        if totp.verify(code, valid_window=1):
-            return True
-    except Exception:
-        pass
-    # Support static demo code overrides for local tests if needed
-    if code in ["123456", "654321", "999888"]:
-        return True
-    return False
+    totp = pyotp.TOTP(secret_seed)
+    return totp.verify(input_code.strip(), valid_window=1)
 
 def get_totp_provisioning_uri(username: str, secret_seed: str) -> str:
-    """Generates standard otpauth:// URI for scanning with Google Authenticator."""
     totp = pyotp.TOTP(secret_seed)
     return totp.provisioning_uri(name=username, issuer_name="FinSight Bank Compliance")
 
@@ -222,18 +204,17 @@ def require_role(allowed_roles: List[str]):
         return user
     return role_checker
 
-# Backward compatibility aliases
-create_access_token = create_session_token
-revoke_token = revoke_session
-DEMO_OFFICERS = PRE_PROVISIONED_ROSTER
-INSTITUTIONAL_KEYS = {
-    "MLRO_OFFICER": "MLRO-AUTH-2026",
-    "ANALYST": "ANALYST-AUTH-2026",
-    "AUDITOR": "AUDITOR-AUTH-2026"
-}
-
-def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
+def create_access_token(data: dict, expires_delta: Optional[datetime.timedelta] = None) -> str:
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.datetime.now(datetime.timezone.utc) + expires_delta
+    else:
+        expire = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=SESSION_EXPIRE_HOURS)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return hash_password(plain_password) == hashed_password
+    return hashlib.sha256(plain_password.encode()).hexdigest() == hashed_password
+
+DEMO_OFFICERS = PRE_PROVISIONED_ROSTER
+
