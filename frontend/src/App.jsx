@@ -43,6 +43,8 @@ export default function App() {
     }
   });
 
+  const [sessionToken, setSessionToken] = useState(() => localStorage.getItem('finsight_token') || '');
+
   // Auth States
   const [loginStep, setLoginStep] = useState(1);
   const [username, setUsername] = useState('officer.sharma');
@@ -96,14 +98,22 @@ export default function App() {
   const [checkerDecision, setCheckerDecision] = useState('CONFIRMED_REJECTED');
   const [checkerNotes, setCheckerNotes] = useState('');
 
-  // Centralized Authenticated Fetch Interceptor (Catches 401 Session Expiry)
+  // Centralized Authenticated Fetch Interceptor (Attaches Bearer & Catches 401 Expiry)
   const apiFetch = async (url, options = {}) => {
-    const res = await fetch(url, { ...options, credentials: 'include' });
+    const headers = {
+      ...(options.headers || {}),
+    };
+    if (sessionToken) {
+      headers['Authorization'] = `Bearer ${sessionToken}`;
+    }
+
+    const res = await fetch(url, { ...options, headers, credentials: 'include' });
     if (res.status === 401) {
-      // 8-Hour Session Expired
       localStorage.removeItem('finsight_user');
+      localStorage.removeItem('finsight_token');
       setCurrentUser(null);
-      setAuthError('Compliance shift session expired. Please re-authenticate.');
+      setSessionToken('');
+      setAuthError('Shift session expired. Please re-authenticate.');
       throw new Error('Session expired');
     }
     return res;
@@ -153,7 +163,11 @@ export default function App() {
       }
       const data = await res.json();
       setCurrentUser(data.user);
+      setSessionToken(data.access_token || '');
       localStorage.setItem('finsight_user', JSON.stringify(data.user));
+      if (data.access_token) {
+        localStorage.setItem('finsight_token', data.access_token);
+      }
     } catch (err) {
       setAuthError(err.message);
     } finally {
@@ -163,10 +177,16 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
-      await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' });
+      await fetch('/api/v1/auth/logout', { 
+        method: 'POST', 
+        headers: sessionToken ? { 'Authorization': `Bearer ${sessionToken}` } : {},
+        credentials: 'include' 
+      });
     } catch (_) {}
     setCurrentUser(null);
+    setSessionToken('');
     localStorage.removeItem('finsight_user');
+    localStorage.removeItem('finsight_token');
     setCaseData(null);
     setSelectedCase(null);
     setLoginStep(1);
@@ -1256,7 +1276,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Evidence & Findings */}
+            {/* Evidence & Telemetry */}
             <div className="grid grid-cols-12 gap-6">
               <div className="col-span-12 lg:col-span-4 bg-[#0b1020] border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
                 <div className="flex items-center justify-between">
