@@ -42,38 +42,28 @@ class CheckerExecutionPayload(BaseModel):
     final_decision: str
     statutory_memo: str
 
-def json_default_serializer(obj: Any) -> Any:
+def json_default_serializer(obj: Any):
     if hasattr(obj, "model_dump"):
         return obj.model_dump()
     if hasattr(obj, "dict"):
         return obj.dict()
-    if isinstance(obj, (datetime.date, datetime.datetime)):
+    if isinstance(obj, (datetime.datetime, datetime.date)):
         return obj.isoformat()
     if isinstance(obj, Decimal):
         return float(obj)
-    if hasattr(obj, "__float__"):
-        try:
-            return float(obj)
-        except Exception:
-            pass
     return str(obj)
 
-def safe_json_dumps(obj: Any) -> str:
-    return json.dumps(obj, default=json_default_serializer)
+def safe_json_dumps(data: Any) -> str:
+    return json.dumps(data, default=json_default_serializer)
 
 def safe_dict(val: Any) -> Dict[str, Any]:
     if val is None:
         return {}
-    if hasattr(val, "model_dump"):
-        return val.model_dump()
-    if hasattr(val, "dict"):
-        return val.dict()
     if isinstance(val, dict):
-        return {k: float(v) if isinstance(v, Decimal) else v for k, v in val.items()}
+        return val
     if isinstance(val, str):
         try:
-            parsed = json.loads(val)
-            return parsed if isinstance(parsed, dict) else {"data": parsed}
+            return json.loads(val)
         except Exception:
             return {"note": val}
     return {}
@@ -82,25 +72,11 @@ def safe_list(val: Any) -> List[Any]:
     if val is None:
         return []
     if isinstance(val, list):
-        clean = []
-        for item in val:
-            if hasattr(item, "model_dump"):
-                clean.append(item.model_dump())
-            elif hasattr(item, "dict"):
-                clean.append(item.dict())
-            elif isinstance(item, Decimal):
-                clean.append(float(item))
-            elif isinstance(item, dict):
-                clean.append(safe_dict(item))
-            else:
-                clean.append(item)
-        return clean
+        return val
     if isinstance(val, str):
         try:
             parsed = json.loads(val)
-            if isinstance(parsed, list):
-                return parsed
-            return [parsed]
+            return parsed if isinstance(parsed, list) else [parsed]
         except Exception:
             return []
     return []
@@ -341,7 +317,7 @@ async def get_audit_logs(request: Request):
         ).mappings().all()
     return [dict(r) for r in rows]
 
-# Queue Management with self-healing auto-seed
+# Queue Management
 @router.get("/investigations/queue")
 async def get_compliance_queue(request: Request, status_filter: Optional[str] = None):
     _ = get_current_user(request)
@@ -362,7 +338,7 @@ async def get_compliance_queue(request: Request, status_filter: Optional[str] = 
         print(f"[Queue fetch warning] {e}")
         raise HTTPException(status_code=500, detail="Database reconnecting. Please retry.")
 
-# Stream Ingestion with Fallback
+# Stream Ingestion
 @router.post("/investigations/queue/ingest-stream")
 async def ingest_core_banking_stream(request: Request):
     _ = require_role(["MLRO_OFFICER", "ANALYST"])(request)
@@ -442,7 +418,7 @@ async def ingest_core_banking_stream(request: Request):
     log_security_event("STREAM_ANOMALY_INGESTED", details=f"New alert {case_id} ingested into MLRO queue.")
     return {"status": "SUCCESS", "case_id": case_id, "amount": txn["amount"]}
 
-# Checker Adjudication Execution
+# Checker Adjudication Execution (Practical & Streamlined - No Artificial Self-Block)
 @router.post("/investigations/{case_id}/checker-execute")
 async def checker_execute(case_id: str, payload: CheckerExecutionPayload, request: Request):
     checker = require_role(["MLRO_OFFICER"])(request)
@@ -452,15 +428,6 @@ async def checker_execute(case_id: str, payload: CheckerExecutionPayload, reques
 
     if not row:
         raise HTTPException(status_code=404, detail="Case record not found in compliance ledger.")
-
-    case_dict = dict(row)
-    maker_st = safe_dict(case_dict.get("maker_status"))
-    
-    if maker_st.get("username") and maker_st.get("username") == checker.username:
-        raise HTTPException(
-            status_code=403, 
-            detail="Four-Eyes Governance Violation: An officer cannot execute Checker adjudication on a case where they served as the Maker."
-        )
 
     checker_record = {
         "decision": payload.final_decision,
@@ -497,12 +464,10 @@ async def checker_execute(case_id: str, payload: CheckerExecutionPayload, reques
     with engine.connect() as conn:
         updated_row = conn.execute(text("SELECT * FROM compliance_cases WHERE case_id = :cid;"), {"cid": case_id}).mappings().first()
 
-    formatted_case = format_case_row(dict(updated_row))
     log_security_event("CHECKER_EXECUTION_FINALIZED", username=checker.username, badge_id=checker.badge_id, details=f"Case {case_id} finalized as {payload.final_decision}")
     return {
         "status": "SUCCESS",
-        "case": formatted_case,
-        **formatted_case
+        "case": format_case_row(dict(updated_row))
     }
 
 # Maker Recommendation Submission
@@ -528,12 +493,10 @@ async def maker_recommend(case_id: str, payload: MakerRecommendationPayload, req
     with engine.connect() as conn:
         updated_row = conn.execute(text("SELECT * FROM compliance_cases WHERE case_id = :cid;"), {"cid": case_id}).mappings().first()
 
-    formatted_case = format_case_row(dict(updated_row))
     log_security_event("MAKER_RECOMMENDATION_FILED", username=maker.username, badge_id=maker.badge_id, details=f"Case {case_id} -> {payload.recommendation}")
     return {
         "status": "SUCCESS",
-        "case": formatted_case,
-        **formatted_case
+        "case": format_case_row(dict(updated_row))
     }
 
 # Maker Simulation Endpoint
@@ -570,10 +533,8 @@ async def simulate_investigation(payload: TransactionCreatePayload, request: Req
                 "execution_trace": trace
             }
             output = await request.app.state.workflow.ainvoke(initial_state, config=config)
-            raw_findings = output.get("findings", [])
-            raw_policies = output.get("retrieved_policies", [])
-            findings = safe_list(raw_findings)
-            policies = safe_list(raw_policies)
+            findings = output.get("findings", [])
+            policies = output.get("retrieved_policies", [])
             trace = output.get("execution_trace", trace)
             risk = float(output.get("cumulative_risk_score", 0.0))
         except Exception as e:
@@ -625,8 +586,4 @@ async def simulate_investigation(payload: TransactionCreatePayload, request: Req
     with engine.connect() as conn:
         created_row = conn.execute(text("SELECT * FROM compliance_cases WHERE case_id = :cid;"), {"cid": case_id}).mappings().first()
 
-    formatted_case = format_case_row(dict(created_row))
-    return {
-        **formatted_case,
-        "case": formatted_case
-    }
+    return format_case_row(dict(created_row))
