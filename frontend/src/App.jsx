@@ -30,10 +30,8 @@ import {
   Clock, 
   Radio,
   Activity,
-  Layers,
   Database,
-  Cpu,
-  KeyRound
+  FileText
 } from 'lucide-react';
 
 export default function App() {
@@ -223,7 +221,7 @@ export default function App() {
       }
     } catch (err) {
       if (err.message !== 'Session expired') {
-        setErrorMessage("Failed to load queue. Please verify database connection.");
+        setErrorMessage("Failed to load queue. Please check database connection.");
       }
     } finally {
       setLoadingQueue(false);
@@ -341,7 +339,7 @@ export default function App() {
     }
   };
 
-  // Checker: Execute Statutory Ruling
+  // Checker: Execute Statutory Ruling (Direct Execution)
   const handleCheckerExecute = async () => {
     if (!selectedCase?.case_id) return;
     setExecutingRuling(true);
@@ -392,18 +390,18 @@ export default function App() {
   const velocityRatio = (parseFloat(formData.amount || 0) / (parseFloat(formData.historical_avg || 1) || 1)).toFixed(1);
   const riskPercent = caseData ? Math.round((caseData.risk_score || 0) * 100) : null;
 
-  const pendingCases = casesList.filter(c => c.status !== 'FINALIZED');
-  const finalizedCases = casesList.filter(c => c.status === 'FINALIZED');
+  const pendingCases = (casesList || []).filter(c => c && c.status !== 'FINALIZED');
+  const finalizedCases = (casesList || []).filter(c => c && c.status === 'FINALIZED');
   const displayedCases = inboxTab === 'pending' ? pendingCases : finalizedCases;
 
   // ==========================================
-  // AUTHENTICATION: INSTITUTIONAL WORKSTATION
+  // AUTHENTICATION VIEW
   // ==========================================
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col font-sans antialiased selection:bg-cyan-500/30">
         
-        {/* Top Institutional App Bar */}
+        {/* Top App Bar */}
         <div className="h-14 border-b border-slate-800 bg-[#090f1d]/90 backdrop-blur-md px-6 flex items-center justify-between z-20">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center">
@@ -422,18 +420,13 @@ export default function App() {
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <span>CORE LEDGER: 1M PARTITIONED</span>
             </div>
-            <span className="text-slate-700">|</span>
-            <div className="hidden sm:flex items-center gap-1.5 text-slate-400">
-              <Cpu className="w-3.5 h-3.5 text-indigo-400" />
-              <span>LATENCY: 14ms</span>
-            </div>
           </div>
         </div>
 
         {/* Full-Bleed Split Canvas */}
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
           
-          {/* Left Hero Command Console (5 Cols) */}
+          {/* Left Hero Sidebar */}
           <div className="lg:col-span-5 bg-gradient-to-br from-[#0c1427] via-[#091020] to-[#070c18] border-b lg:border-b-0 lg:border-r border-slate-800 p-8 lg:p-12 flex flex-col justify-between relative overflow-hidden">
             <div className="space-y-8 relative z-10">
               <div className="space-y-3">
@@ -449,7 +442,7 @@ export default function App() {
                 </p>
               </div>
 
-              {/* Live Surveillance Metrics Matrix */}
+              {/* Metrics Matrix */}
               <div className="grid grid-cols-2 gap-3 font-mono text-xs">
                 <div className="p-3.5 rounded-xl bg-[#0e172c] border border-slate-800 space-y-1">
                   <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1.5">
@@ -469,7 +462,7 @@ export default function App() {
 
                 <div className="p-3.5 rounded-xl bg-[#0e172c] border border-slate-800 space-y-1">
                   <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1.5">
-                    <UserCheck className="w-3.5 h-3.5 text-indigo-400" /> Segregation
+                    <UserCheck className="w-3 h-3 text-indigo-400" /> Segregation
                   </div>
                   <div className="text-sm font-bold text-white">Maker & Checker</div>
                   <div className="text-[10px] text-indigo-400">Enforced SoD</div>
@@ -477,28 +470,10 @@ export default function App() {
 
                 <div className="p-3.5 rounded-xl bg-[#0e172c] border border-slate-800 space-y-1">
                   <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1.5">
-                    <KeyRound className="w-3.5 h-3.5 text-emerald-400" /> Cryptography
+                    <Lock className="w-3 h-3 text-emerald-400" /> Cryptography
                   </div>
                   <div className="text-sm font-bold text-white">RFC 6238 TOTP</div>
                   <div className="text-[10px] text-emerald-400">HttpOnly Binding</div>
-                </div>
-              </div>
-
-              {/* Streaming Alert Feed Simulator */}
-              <div className="p-4 rounded-xl bg-[#070e1c] border border-slate-800 space-y-2 text-xs font-mono">
-                <div className="flex items-center justify-between text-[10px] text-slate-500 uppercase">
-                  <span>Inbound Surveillance Ticker</span>
-                  <span className="text-emerald-400 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> LIVE
-                  </span>
-                </div>
-                <div className="space-y-1.5 text-[11px]">
-                  <div className="text-slate-300 truncate">
-                    &bull; <span className="text-cyan-400">TXN-1049281</span>: ₹14.5L &rarr; Panama Horizon (P1 CRITICAL)
-                  </div>
-                  <div className="text-slate-400 truncate">
-                    &bull; <span className="text-indigo-400">TXN-1082914</span>: ₹18.5L &rarr; KoinX BVI (P1 CRITICAL)
-                  </div>
                 </div>
               </div>
             </div>
@@ -509,7 +484,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Right Terminal Console (7 Cols) */}
+          {/* Right Terminal Console */}
           <div className="lg:col-span-7 bg-[#070b14] p-8 lg:p-14 flex items-center justify-center">
             <div className="max-w-md w-full space-y-6">
               
@@ -580,57 +555,42 @@ export default function App() {
                     <span>Verify Credentials & Proceed to 2FA</span>
                   </button>
 
-                  {/* Cryptographic Smart-Badges for Quick Testing */}
+                  {/* Persona Shortcuts */}
                   <div className="pt-5 border-t border-slate-800 space-y-2.5">
                     <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
                       <span>Evaluator Persona Shortcuts:</span>
                       <span className="text-cyan-400">Select to Populate</span>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 gap-3">
                       <div
                         onClick={() => { setUsername('officer.sharma'); setPassword('Compliance@2026'); }}
-                        className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                        className={`p-3.5 rounded-xl border text-left transition cursor-pointer ${
                           username === 'officer.sharma' 
                             ? 'bg-cyan-950/40 border-cyan-500 ring-1 ring-cyan-500/30' 
                             : 'bg-[#0d1424] border-slate-800 hover:border-slate-700'
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-bold text-white truncate">Priya S.</span>
-                          <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-bold">CHECKER</span>
+                          <span className="text-xs font-bold text-white">Priya Sharma</span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold">CHECKER</span>
                         </div>
-                        <div className="text-[9px] text-slate-400 mt-0.5 font-mono">MLRO Officer</div>
-                      </div>
-
-                      <div
-                        onClick={() => { setUsername('officer.kapoor'); setPassword('Senior@2026'); }}
-                        className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
-                          username === 'officer.kapoor' 
-                            ? 'bg-emerald-950/40 border-emerald-500 ring-1 ring-emerald-500/30' 
-                            : 'bg-[#0d1424] border-slate-800 hover:border-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-bold text-white truncate">Vikram K.</span>
-                          <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold">SR MLRO</span>
-                        </div>
-                        <div className="text-[9px] text-slate-400 mt-0.5 font-mono">Peer Review</div>
+                        <div className="text-[10px] text-slate-400 mt-1 font-mono">MLRO &bull; Queue Adjudication</div>
                       </div>
 
                       <div
                         onClick={() => { setUsername('analyst.verma'); setPassword('Analyst@2026'); }}
-                        className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                        className={`p-3.5 rounded-xl border text-left transition cursor-pointer ${
                           username === 'analyst.verma' 
                             ? 'bg-indigo-950/40 border-indigo-500 ring-1 ring-indigo-500/30' 
                             : 'bg-[#0d1424] border-slate-800 hover:border-slate-700'
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-bold text-white truncate">Rohan V.</span>
-                          <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-bold">MAKER</span>
+                          <span className="text-xs font-bold text-white">Rohan Verma</span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold">MAKER</span>
                         </div>
-                        <div className="text-[9px] text-slate-400 mt-0.5 font-mono">Triage Desk</div>
+                        <div className="text-[10px] text-slate-400 mt-1 font-mono">Analyst &bull; Simulation Desk</div>
                       </div>
                     </div>
                   </div>
@@ -1075,7 +1035,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Statutory Adjudication Controls (Always Available for any Pending Case) */}
+                    {/* Statutory Adjudication Controls (Directly available for any pending case) */}
                     {selectedCase.status === 'FINALIZED' ? (
                       <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-800 text-emerald-300 text-xs flex items-center justify-between shadow-lg">
                         <div className="space-y-1">
@@ -1202,7 +1162,7 @@ export default function App() {
                   <select
                     value={formData.channel}
                     onChange={(e) => setFormData({ ...formData, channel: e.target.value })}
-                    className="w-full bg-[#080f1d] border border-slate-700 rounded-xl px-3 py-2.5 text-slate-200 font-mono focus:outline-none focus:border-indigo-500 transition font-medium"
+                    className="w-full bg-[#080f1d] border border-slate-700 rounded-xl px-3.5 py-2.5 text-slate-200 font-mono focus:outline-none focus:border-indigo-500 transition font-medium"
                   >
                     <option value="IMPS">IMPS (Immediate Transfer)</option>
                     <option value="NEFT">NEFT (Batch Settlement)</option>
@@ -1588,4 +1548,3 @@ export default function App() {
     </div>
   );
 }
-EOF
