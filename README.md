@@ -75,6 +75,10 @@ docker compose -f docker-compose.prod.yml up --build -d
 
 The frontend serves the optimized Vite bundle through Nginx, proxies `/api` over the private Compose network, and exposes `/healthz`. The backend `/health` endpoint verifies database connectivity and all required schemas before reporting ready.
 
+### Render deployment
+
+The checked-in `render.yaml` provisions the production topology in Singapore: public Nginx frontend, private FastAPI API, and private PostgreSQL 16/pgvector. Follow [docs/DEPLOY_RENDER.md](docs/DEPLOY_RENDER.md) to generate the required officer credentials, apply the Blueprint, and verify the complete Maker–Checker–Regulator workflow.
+
 ---
 
 ## 🚀 Quick Start Guide

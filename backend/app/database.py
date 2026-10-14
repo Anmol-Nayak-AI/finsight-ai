@@ -6,10 +6,22 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv(
+RAW_DATABASE_URL = os.getenv(
     "DATABASE_URL", 
     "postgresql+psycopg://postgres:password@localhost:5432/finsight"
 )
+
+
+def normalize_sqlalchemy_database_url(database_url: str) -> str:
+    """Use psycopg 3 for provider URLs that omit a SQLAlchemy driver."""
+    if database_url.startswith("postgresql://"):
+        return database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    if database_url.startswith("postgres://"):
+        return database_url.replace("postgres://", "postgresql+psycopg://", 1)
+    return database_url
+
+
+DATABASE_URL = normalize_sqlalchemy_database_url(RAW_DATABASE_URL)
 
 # Enterprise Production Connection Pool with Sleep/Wake Socket Auto-Recovery
 engine = create_engine(
