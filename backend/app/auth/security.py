@@ -1,46 +1,80 @@
 import os
 import hashlib
+import hmac
 import datetime
 from typing import Optional, Dict, Any, List
 import jwt
 import pyotp
+import uuid
 from fastapi import HTTPException, Security, status, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import text
 from app.database import engine
 
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "prod-fin-compliance-enterprise-secret-key-9918237461")
+APP_ENV = os.getenv("APP_ENV", "development").lower()
+_configured_secret = os.getenv("JWT_SECRET_KEY")
+if APP_ENV == "production" and not _configured_secret:
+    raise RuntimeError("JWT_SECRET_KEY must be configured when APP_ENV=production")
+if APP_ENV == "production" and len(_configured_secret or "") < 32:
+    raise RuntimeError("JWT_SECRET_KEY must contain at least 32 characters when APP_ENV=production")
+SECRET_KEY = _configured_secret or "local-dev-only-change-me-finsight"
 ALGORITHM = "HS256"
 SESSION_EXPIRE_HOURS = 8
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "true" if APP_ENV == "production" else "false").lower() == "true"
+DEMO_MODE = os.getenv("DEMO_MODE", "true" if APP_ENV != "production" else "false").lower() == "true"
+
+def _identity_secret(environment_name: str, development_default: str) -> str:
+    configured = os.getenv(environment_name)
+    if configured:
+        return configured
+    if APP_ENV == "production":
+        raise RuntimeError(f"{environment_name} must be configured when APP_ENV=production")
+    return development_default
+
+def hash_password(password: str, username: str) -> str:
+    salt = f"finsight-identity:{username.lower()}".encode()
+    return hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 310_000).hex()
+
+def verify_password(password: str, username: str, expected_hash: str) -> bool:
+    return hmac.compare_digest(hash_password(password, username), expected_hash)
 
 # INSTITUTIONAL PRE-PROVISIONED ROSTER
 PRE_PROVISIONED_ROSTER = {
     "officer.sharma": {
         "username": "officer.sharma",
-        "password_hash": hashlib.sha256("Compliance@2026".encode()).hexdigest(),
+        "password_hash": hash_password(_identity_secret("MLRO_SHARMA_PASSWORD", "Compliance@2026"), "officer.sharma"),
         "full_name": "Priya Sharma (CAMS)",
         "role": "MLRO_OFFICER",
         "badge_id": "AML-88219",
         "department": "Special Investigations Unit (SIU)",
-        "totp_seed": "JBSWY3DPEHPK3PXP"
+        "totp_seed": _identity_secret("MLRO_SHARMA_TOTP_SEED", "JBSWY3DPEHPK3PXP")
     },
     "officer.kapoor": {
         "username": "officer.kapoor",
-        "password_hash": hashlib.sha256("Senior@2026".encode()).hexdigest(),
+        "password_hash": hash_password(_identity_secret("MLRO_KAPOOR_PASSWORD", "Senior@2026"), "officer.kapoor"),
         "full_name": "Vikram Kapoor",
         "role": "MLRO_OFFICER",
         "badge_id": "AML-99001",
         "department": "Executive Compliance Directorate",
-        "totp_seed": "JBSWY3DPEHPK3PXP"
+        "totp_seed": _identity_secret("MLRO_KAPOOR_TOTP_SEED", "JBSWY3DPEHPK3PXP")
     },
     "analyst.verma": {
         "username": "analyst.verma",
-        "password_hash": hashlib.sha256("Analyst@2026".encode()).hexdigest(),
+        "password_hash": hash_password(_identity_secret("ANALYST_VERMA_PASSWORD", "Analyst@2026"), "analyst.verma"),
         "full_name": "Rohan Verma",
         "role": "ANALYST",
         "badge_id": "AML-33012",
         "department": "Transaction Monitoring Operations",
-        "totp_seed": "HXDMVJECJJWSRB3H"
+        "totp_seed": _identity_secret("ANALYST_VERMA_TOTP_SEED", "HXDMVJECJJWSRB3H")
+    },
+    "regulator.iyer": {
+        "username": "regulator.iyer",
+        "password_hash": hash_password(_identity_secret("REGULATOR_IYER_PASSWORD", "Regulator@2026"), "regulator.iyer"),
+        "full_name": "Ananya Iyer",
+        "role": "REGULATOR_OFFICER",
+        "badge_id": "FIU-IND-7104",
+        "department": "Financial Intelligence Unit - India",
+        "totp_seed": _identity_secret("REGULATOR_IYER_TOTP_SEED", "JBSWY3DPEHPK3PXP")
     }
 }
 
@@ -54,6 +88,7 @@ class UserPrincipal(BaseModel):
 def init_security_tables():
     try:
         with engine.begin() as conn:
+            conn.execute(text("SELECT pg_advisory_xact_lock(hashtext('finsight_security_schema_v2'));"))
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS compliance_officers (
                     username VARCHAR(64) PRIMARY KEY,
@@ -72,6 +107,12 @@ def init_security_tables():
                     expires_at TIMESTAMP WITH TIME ZONE NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS used_mfa_challenges (
+                    challenge_hash VARCHAR(64) PRIMARY KEY,
+                    used_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TIMESTAMP WITH TIME ZONE NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS security_audit_logs (
                     id SERIAL PRIMARY KEY,
                     event_type VARCHAR(64) NOT NULL,
@@ -80,6 +121,9 @@ def init_security_tables():
                     details TEXT,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 );
+
+                DELETE FROM used_mfa_challenges WHERE expires_at < CURRENT_TIMESTAMP;
+                DELETE FROM revoked_tokens WHERE expires_at < CURRENT_TIMESTAMP;
             """))
 
             for u, data in PRE_PROVISIONED_ROSTER.items():
@@ -124,10 +168,27 @@ def get_totp_provisioning_uri(username: str, secret_seed: str) -> str:
 
 def create_mfa_challenge_token(username: str) -> str:
     exp = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=5)
-    return jwt.encode({"sub": username, "stage": "MFA_PENDING", "exp": exp}, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(
+        {"sub": username, "stage": "MFA_PENDING", "jti": uuid.uuid4().hex, "exp": exp},
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+
+def consume_mfa_challenge(challenge_id: str, expires_at: datetime.datetime) -> bool:
+    """Atomically mark a valid MFA challenge as used to prevent token replay."""
+    challenge_hash = hashlib.sha256(challenge_id.encode()).hexdigest()
+    with engine.begin() as conn:
+        consumed = conn.execute(text("""
+            INSERT INTO used_mfa_challenges (challenge_hash, expires_at)
+            VALUES (:challenge_hash, :expires_at)
+            ON CONFLICT (challenge_hash) DO NOTHING
+            RETURNING challenge_hash;
+        """), {"challenge_hash": challenge_hash, "expires_at": expires_at}).scalar()
+    return consumed is not None
 
 def create_session_token(user: UserPrincipal) -> str:
-    exp = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=SESSION_EXPIRE_HOURS)
+    issued_at = datetime.datetime.now(datetime.timezone.utc)
+    exp = issued_at + datetime.timedelta(hours=SESSION_EXPIRE_HOURS)
     payload = {
         "sub": user.username,
         "name": user.full_name,
@@ -135,6 +196,8 @@ def create_session_token(user: UserPrincipal) -> str:
         "badge_id": user.badge_id,
         "dept": user.department,
         "stage": "AUTHENTICATED",
+        "jti": uuid.uuid4().hex,
+        "iat": issued_at,
         "exp": exp
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
@@ -157,11 +220,14 @@ def revoke_session(token: str):
         print(f"[Revoke Notice] {err}")
 
 def get_current_user(request: Request) -> UserPrincipal:
-    token = request.cookies.get("finsight_session")
+    # Prefer an explicit bearer credential so a stale browser cookie from a
+    # previous officer cannot shadow the caller's intended session.
+    auth_header = request.headers.get("Authorization")
+    token = None
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1]
     if not token:
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ")[1]
+        token = request.cookies.get("finsight_session")
 
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No active session found. Please sign in.")
@@ -213,8 +279,4 @@ def create_access_token(data: dict, expires_delta: Optional[datetime.timedelta] 
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return hashlib.sha256(plain_password.encode()).hexdigest() == hashed_password
-
 DEMO_OFFICERS = PRE_PROVISIONED_ROSTER
-

@@ -1,4 +1,5 @@
 import asyncio
+import os
 from typing import List, Dict, Any
 from rank_bm25 import BM25Okapi
 from langchain_openai import OpenAIEmbeddings
@@ -20,7 +21,7 @@ class HybridRAGRetriever:
     def __init__(self, session: AsyncSession, k_rrf: int = 60):
         self.session = session
         self.k_rrf = k_rrf
-        self.embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+        self.embeddings = OpenAIEmbeddings(model="text-embedding-3-small") if os.getenv("OPENAI_API_KEY") else None
         self.bm25_index: BM25Okapi = None
         self.corpus_chunks: List[Dict[str, Any]] = []
 
@@ -50,12 +51,15 @@ class HybridRAGRetriever:
 
     async def _retrieve_dense(self, query: str, top_n: int = 15) -> List[Dict[str, Any]]:
         """Executes pgvector HNSW cosine similarity search."""
+        if self.embeddings is None:
+            return []
         query_vector = await self.embeddings.aembed_query(query)
         sql = text("""
             SELECT id, document_title, circular_ref, section, content,
-                   1 - (embedding <=> :query_vector\:\:vector) as cosine_similarity
+                   1 - (embedding <=> CAST(:query_vector AS vector)) as cosine_similarity
             FROM regulatory_chunks
-            ORDER BY embedding <=> :query_vector\:\:vector ASC
+            WHERE embedding IS NOT NULL
+            ORDER BY embedding <=> CAST(:query_vector AS vector) ASC
             LIMIT :top_n
         """)
         result = await self.session.execute(sql, {
@@ -95,7 +99,12 @@ class HybridRAGRetriever:
         """Runs Dense and BM25 simultaneously and merges using Reciprocal Rank Fusion."""
         dense_task = asyncio.create_task(self._retrieve_dense(query, top_n=15))
         sparse_results = self._retrieve_sparse(query, top_n=15)
-        dense_results = await dense_task
+        try:
+            dense_results = await dense_task
+        except Exception:
+            # Sparse statutory evidence remains available during embedding API
+            # outages, so the investigation stays explainable and operational.
+            dense_results = []
 
         rrf_map: Dict[int, Dict[str, Any]] = {}
 

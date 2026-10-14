@@ -1,11 +1,10 @@
 from typing import Dict, Any
+import os
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from app.graph.state import ComplianceState, Finding
 from app.database import async_session_factory
 from app.rag.hybrid_retriever import HybridRAGRetriever
-
-llm_reasoner = ChatOpenAI(model="gpt-4o", temperature=0.0)
 
 async def regulatory_researcher(state: ComplianceState) -> Dict[str, Any]:
     """Executes Hybrid BM25 + pgvector RRF retrieval over statutory regulatory circulars."""
@@ -45,6 +44,9 @@ async def regulatory_researcher(state: ComplianceState) -> Dict[str, Any]:
         ]
         
         try:
+            if not os.getenv("OPENAI_API_KEY"):
+                raise RuntimeError("OpenAI reasoning is not configured")
+            llm_reasoner = ChatOpenAI(model="gpt-4o", temperature=0.0)
             llm_response = await llm_reasoner.ainvoke(prompt)
             rationale = llm_response.content
         except Exception:

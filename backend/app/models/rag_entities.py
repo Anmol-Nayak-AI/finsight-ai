@@ -13,7 +13,9 @@ class RegulatoryDocumentChunk(Base):
     content = Column(Text, nullable=False)
     
     # 1536 Dimensions matching text-embedding-3-small
-    embedding = Column(Vector(1536), nullable=False)
+    # Text-only rows keep sparse BM25 retrieval operational when an embedding
+    # provider is unavailable; seed_corpus.py enriches these rows later.
+    embedding = Column(Vector(1536), nullable=True)
 
     __table_args__ = (
         Index(

@@ -1,8 +1,9 @@
 import random
-from typing import Dict, Any, Optional
+import hashlib
+from typing import Dict, Any, Optional, Literal
 from langchain_core.tools import tool
 import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 from app.database import engine, sync_engine
 
@@ -11,15 +12,27 @@ engine = sync_engine
 
 class TransactionCreatePayload(BaseModel):
     transaction_id: Optional[str] = None
-    customer_id: str = "CUST-DYNAMIC"
-    customer_name: str
-    amount: float
-    currency: str = "INR"
-    channel: str = "IMPS"
-    beneficiary_name: str
+    customer_id: str = Field(default="CUST-DYNAMIC", min_length=3, max_length=64)
+    customer_name: str = Field(min_length=2, max_length=255)
+    amount: float = Field(gt=0, le=9_999_999_999_999, allow_inf_nan=False)
+    currency: Literal["INR"] = "INR"
+    channel: Literal["IMPS", "NEFT", "RTGS", "UPI", "SWIFT"] = "IMPS"
+    beneficiary_name: str = Field(min_length=2, max_length=255)
     beneficiary_is_new: bool = True
-    narration: str = "Corporate funds transfer"
-    historical_avg: float = 50000.0
+    narration: str = Field(default="Corporate funds transfer", min_length=2, max_length=500)
+    historical_avg: float = Field(default=50000.0, gt=0, le=9_999_999_999_999, allow_inf_nan=False)
+
+    @field_validator("transaction_id", "customer_id", "customer_name", "beneficiary_name", "narration")
+    @classmethod
+    def normalize_identity_fields(cls, value: Optional[str], info):
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError(f"{info.field_name} cannot be blank")
+        if info.field_name in {"transaction_id", "customer_id"}:
+            return normalized.upper()
+        return normalized
 
 def register_custom_transaction(data: TransactionCreatePayload) -> Dict[str, Any]:
     """Upserts dynamic simulation payload into partitioned PostgreSQL ledger."""
@@ -32,7 +45,7 @@ def register_custom_transaction(data: TransactionCreatePayload) -> Dict[str, Any
         "amount": float(data.amount),
         "currency": data.currency,
         "channel": data.channel,
-        "beneficiary_id": f"BEN-{abs(hash(data.beneficiary_name)) % 100000:05d}",
+        "beneficiary_id": f"BEN-{int(hashlib.sha256(data.beneficiary_name.lower().encode()).hexdigest()[:8], 16) % 100000:05d}",
         "beneficiary_name": data.beneficiary_name,
         "beneficiary_is_new": data.beneficiary_is_new,
         "narration": data.narration,
@@ -59,6 +72,22 @@ def register_custom_transaction(data: TransactionCreatePayload) -> Dict[str, Any
                 beneficiary_is_new = EXCLUDED.beneficiary_is_new,
                 narration = EXCLUDED.narration,
                 historical_avg = EXCLUDED.historical_avg;
+            """),
+            record
+        )
+        conn.execute(
+            text("""
+            INSERT INTO account_holders (
+                customer_id, customer_name, historical_avg, latest_transaction_at, updated_at
+            ) VALUES (
+                :customer_id, :customer_name, :historical_avg, :created_at, CURRENT_TIMESTAMP
+            )
+            ON CONFLICT (customer_id) DO UPDATE SET
+                customer_name = EXCLUDED.customer_name,
+                historical_avg = EXCLUDED.historical_avg,
+                latest_transaction_at = EXCLUDED.latest_transaction_at,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE EXCLUDED.latest_transaction_at >= account_holders.latest_transaction_at;
             """),
             record
         )
@@ -96,7 +125,7 @@ def calculate_velocity_profile(customer_id: str, incoming_amount: float) -> Dict
     """Calculates transaction velocity spike multiplier against customer historical baseline spending patterns."""
     with engine.connect() as conn:
         row = conn.execute(
-            text("SELECT historical_avg FROM transactions WHERE customer_id = :cust_id LIMIT 1;"),
+            text("SELECT historical_avg FROM transactions WHERE customer_id = :cust_id ORDER BY created_at DESC LIMIT 1;"),
             {"cust_id": customer_id}
         ).scalar()
         

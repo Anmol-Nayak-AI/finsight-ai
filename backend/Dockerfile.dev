@@ -16,4 +16,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # In development, the source code is mounted via docker-compose volume.
 # Default command uses uvicorn with reload enabled.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "app"]

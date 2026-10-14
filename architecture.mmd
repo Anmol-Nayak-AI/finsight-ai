@@ -6,11 +6,19 @@ flowchart TD
     classDef tool fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5;
     classDef checkpointer fill:#312e81,stroke:#a855f7,stroke-width:2px,color:#f3e8ff;
     classDef hitl fill:#78350f,stroke:#f59e0b,stroke-width:2px,color:#fef3c7;
+    classDef regulator fill:#581c87,stroke:#c084fc,stroke-width:2px,color:#f3e8ff;
     classDef term fill:#065f46,stroke:#10b981,stroke-width:2px,color:#d1fae5;
 
     Client["React 18 Dashboard<br/>(Vite Console)"]:::client
     API["FastAPI Ingestion Gateway<br/>/api/v1/investigations"]:::gateway
     Checkpointer[("PostgreSQL 16<br/>AsyncPostgresSaver & Checkpoints")]:::checkpointer
+
+    subgraph Governance ["Three-Party Decision Governance"]
+        Maker["AML Analyst<br/>Maker Recommendation"]:::hitl
+        Checker["Independent MLRO<br/>Binding Decision / FIU Referral"]:::gateway
+        FIU["FIU-IND Officer<br/>External Disposition"]:::regulator
+        RegulatoryTerminal["Immutable Regulator Outcome<br/>Cleared / Monitoring / Enforcement"]:::term
+    end
 
     subgraph LangGraph_Machine ["LangGraph Stateful Cyclic Engine"]
         InvNode["Node 1: Transaction Investigator"]:::agent
@@ -23,6 +31,7 @@ flowchart TD
 
     subgraph Data_Layer ["Data & Tool Subsystems"]
         LedgerTool["PostgreSQL Core Ledger<br/>B-Tree Index Scan (<2ms)"]:::tool
+        AccountDirectory["Canonical Account-Holder Directory<br/>Search / Pagination / Sampling"]:::tool
         ProfilerTool["Turnover Velocity Profiler<br/>& Sanctions Watchlist"]:::tool
         RAGRetriever["Hybrid BM25 + pgvector HNSW<br/>Reciprocal Rank Fusion (k=60)"]:::tool
     end
@@ -32,6 +41,8 @@ flowchart TD
     Checkpointer -->|"3. Invoke StateGraph"| InvNode
 
     InvNode <-->|"Ledger Query"| LedgerTool
+    LedgerTool -->|"Latest identity projection"| AccountDirectory
+    Client <-->|"Search / select one bound identity"| AccountDirectory
     InvNode -->|"State Dispatch"| AnalystNode
     InvNode -->|"State Dispatch"| RAGNode
 
@@ -45,5 +56,11 @@ flowchart TD
     EvalNode -->|"Risk < 0.70 Safe"| TermNode
 
     HITLNode -->|"4. Persist State to Disk"| Checkpointer
-    Client <-->|"5. POST /resume (Adjudication Token)"| HITLNode
-    HITLNode -->|"MANUAL_REJECTED / APPROVED"| TermNode
+    Client <-->|"5. Submit evidence"| Maker
+    Maker -->|"Atomic PENDING_MAKER → PENDING_CHECKER"| Checker
+    Checker -->|"Approve / Reject"| TermNode
+    Checker -->|"Escalate + unique FIU docket"| FIU
+    FIU -->|"Atomic one-time disposition"| RegulatoryTerminal
+    Maker -. "Cannot self-adjudicate" .-> Checker
+    Checker -. "Cannot self-resolve escalation" .-> FIU
+    HITLNode --> Maker

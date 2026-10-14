@@ -10,15 +10,37 @@ FinSight AI is an institutional-grade Anti-Money Laundering (AML) regulatory int
 
 ### 1. Institutional Four-Eyes Principle (Maker-Checker Governance)
 - **Analyst Desk (Maker)**:
+  - Searches and pages across the canonical core-ledger account-holder directory; selecting a holder binds the customer ID, current name, and historical baseline as one consistent identity.
   - Profiles incoming transactions against 30-day moving turnover baselines.
   - Computes velocity deviation multipliers and triggers LangGraph multi-agent investigations.
   - Submits formal recommendations (`RECOMMEND_REJECT`, `RECOMMEND_ESCALATE`, `RECOMMEND_APPROVE`).
+  - Uses one unambiguous **Start New Case** action after the current Maker step is complete.
 - **MLRO Executive Desk (Checker)**:
   - Holds exclusive legal authority to issue binding statutory rulings (`ACCOUNT_FREEZE`, `ESCALATE`, `APPROVE`) and file Suspicious Activity Reports (SARs) with regulatory bodies (e.g., FIU-IND).
   - Test sliders and manual creation controls are strictly prohibited and hidden on this desk.
   - Features real-time Stream Anomaly Ingestion from the 1,000,000-row core banking transaction ledger.
+- **FIU External Disposition Desk (Regulator)**:
+  - Receives only MLRO-escalated cases and cannot access the internal Maker or Checker actions.
+  - Records a unique FIU acknowledgement/order reference, rationale, and one terminal outcome: no further action, continued monitoring, or enforcement referral.
+  - Uses an atomic one-time transition so duplicate or concurrent dispositions cannot overwrite the first official outcome.
 - **Strict Duty Segregation**:
   - The API programmatically prevents an officer from adjudicating any case where they served as the Maker (`HTTP 403 Forbidden`).
+  - Maker and checker transitions use atomic compare-and-set updates. Concurrent duplicate submissions produce one success and one `HTTP 409 Conflict`; a case can never be ruled on twice.
+  - Every successful transition increments `decision_version` and appends an actor/timestamp event to the case execution trace.
+
+### Approval and Escalation Lifecycle
+
+| State | Owner | Allowed next action | Mutability |
+|---|---|---|---|
+| `PENDING_MAKER` | AML Analyst | Submit one evidence-backed recommendation | Editable by Maker |
+| `PENDING_CHECKER` | Independent MLRO | Approve, reject, or refer outside bank authority | Transaction details locked |
+| `FINALIZED` | Core ledger | None | Immutable |
+| `ESCALATED_FIU` | FIU-IND officer | Record one external disposition | Read-only to Analyst and MLRO |
+| `REGULATOR_CLEARED` | Core ledger | None | Immutable |
+| `REGULATOR_MONITORING` | Core ledger | None | Immutable |
+| `REGULATOR_ENFORCEMENT` | Core ledger | None | Immutable |
+
+An escalation is not a checker approval. It creates a unique FIU-IND docket, records `PENDING_REGULATOR`, freezes internal adjudication, and transfers jurisdiction to the regulator-only queue. The original Maker recommendation and MLRO referral remain immutable when the FIU outcome is appended.
 
 ### 2. Multi-Agent Reasoning Graph (LangGraph)
 - **Transaction Investigator**: Analyzes transaction payload, corridor risk, payment channel (SWIFT, RTGS, IMPS, UPI), and counterparty linkages.
@@ -38,6 +60,20 @@ FinSight AI is an institutional-grade Anti-Money Laundering (AML) regulatory int
 - **Session Interceptor**:
   - Dual Bearer token and secure HTTP-only cookie support.
   - Centralized frontend client interceptor catches HTTP 401 session expiry and prompts re-authentication cleanly.
+  - Explicit bearer credentials take precedence over stale cookies during officer switching.
+  - MFA seeds and local authenticator pairing are available only when `DEMO_MODE=true`; production never returns TOTP secrets.
+
+### Production Environment
+
+Set `APP_ENV=production`, a high-entropy `JWT_SECRET_KEY`, `COOKIE_SECURE=true`, `DEMO_MODE=false`, `VITE_DEMO_MODE=false`, externally managed officer passwords/TOTP seeds, and an explicit comma-separated `ALLOWED_ORIGINS` list. The API refuses to start in production when the JWT or identity secrets are missing. See `.env.example` for the complete configuration.
+
+The production images are separate from the hot-reload development images. After supplying the required secrets, run:
+
+```bash
+docker compose -f docker-compose.prod.yml up --build -d
+```
+
+The frontend serves the optimized Vite bundle through Nginx, proxies `/api` over the private Compose network, and exposes `/healthz`. The backend `/health` endpoint verifies database connectivity and all required schemas before reporting ready.
 
 ---
 
@@ -81,17 +117,17 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 |---|---|---|---|---|
 | `officer.sharma` | **MLRO_OFFICER** (Checker) | Executive Adjudication & Freezes | `JBSWY3DPEHPK3PXP` | `Compliance@2026` |
 | `analyst.verma` | **ANALYST** (Maker) | Transaction Triage & Investigation | `HXDMVJECJJWSRB3H` | `Analyst@2026` |
-| `auditor.rao` | **AUDITOR** | Immutable Security Audit Inspection | `MFRGGZDFMY2TOOJX` | `Auditor@2026` |
+| `regulator.iyer` | **REGULATOR_OFFICER** (FIU) | External Disposition & Enforcement | `JBSWY3DPEHPK3PXP` | `Regulator@2026` |
+
+These convenience personas appear in the UI only when `VITE_DEMO_MODE=true`; the API returns pairing secrets only when `DEMO_MODE=true`. Disable both flags outside local demonstrations.
 
 ---
 
 ## 🧪 Testing & Verification
 
-Run the hybrid RAG evaluator test suite:
+Run the complete workflow and hybrid RAG test suites:
 ```bash
-cd backend
-source venv/bin/activate
-pytest tests/evaluators/test_hybrid_rag_eval.py
+docker compose -f docker-compose.dev.yml exec -T backend pytest -q
 ```
 
 Check API Telemetry:

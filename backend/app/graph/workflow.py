@@ -62,6 +62,19 @@ def create_compliance_graph():
     return builder
 
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
-# Default compiled workflow application with memory checkpointer
-app = create_compliance_graph().compile(checkpointer=MemorySaver())
+def create_checkpoint_serializer():
+    """Allow only the application's typed Finding record on newer LangGraph releases."""
+    try:
+        return JsonPlusSerializer(
+            allowed_msgpack_modules=[("app.graph.state", "Finding")]
+        )
+    except TypeError:
+        # LangGraph < 1.0 did not expose an explicit MessagePack allowlist.
+        return JsonPlusSerializer()
+
+# Default compiled workflow application with an explicitly constrained serializer.
+app = create_compliance_graph().compile(
+    checkpointer=MemorySaver(serde=create_checkpoint_serializer())
+)

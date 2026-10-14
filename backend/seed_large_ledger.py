@@ -34,20 +34,25 @@ NARRATIONS = [
 TOTAL_RECORDS = 10000
 print(f"Generating and batch-inserting {TOTAL_RECORDS} realistic banking records into PostgreSQL...")
 
+def customer_profile(customer_id: str):
+    """Return one stable identity/profile for every ledger customer ID."""
+    profile_rng = random.Random(f"finsight-customer:{customer_id}")
+    is_corp = profile_rng.random() >= 0.7
+    if is_corp:
+        name = f"{profile_rng.choice(CORP_PREFIX)} {profile_rng.choice(CORP_SUFFIX)}"
+        baseline = round(profile_rng.uniform(150000, 1500000), 2)
+    else:
+        name = f"{profile_rng.choice(FIRST_NAMES)} {profile_rng.choice(LAST_NAMES)}"
+        baseline = round(profile_rng.uniform(15000, 80000), 2)
+    return name, baseline
+
 records = []
 now = datetime.datetime.now(datetime.timezone.utc)
 
 for i in range(1, TOTAL_RECORDS + 1):
     txn_id = f"TXN-{100000 + i}"
     cust_id = f"CUST-{random.randint(1000, 9999)}"
-    
-    # 70% individuals, 30% corporates
-    if random.random() < 0.7:
-        cust_name = f"{random.choice(FIRST_NAMES)} {random.choice(LAST_NAMES)}"
-        baseline = round(random.uniform(15000, 80000), 2)
-    else:
-        cust_name = f"{random.choice(CORP_PREFIX)} {random.choice(CORP_SUFFIX)}"
-        baseline = round(random.uniform(150000, 1500000), 2)
+    cust_name, baseline = customer_profile(cust_id)
         
     # Anomaly distribution: 5% High Risk Shell, 15% Commercial Moderate, 80% Clean Retail
     rand_roll = random.random()
@@ -102,5 +107,22 @@ with engine.begin() as conn:
         """),
         records
     )
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS account_holders (
+            customer_id VARCHAR(64) PRIMARY KEY,
+            customer_name VARCHAR(255) NOT NULL,
+            historical_avg NUMERIC(15, 2) NOT NULL CHECK (historical_avg > 0),
+            latest_transaction_at TIMESTAMP WITH TIME ZONE NOT NULL,
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        TRUNCATE TABLE account_holders;
+        INSERT INTO account_holders (
+            customer_id, customer_name, historical_avg, latest_transaction_at
+        )
+        SELECT DISTINCT ON (customer_id)
+            customer_id, customer_name, historical_avg, created_at
+        FROM transactions
+        ORDER BY customer_id, created_at DESC;
+    """))
 
 print(f"Successfully seeded {TOTAL_RECORDS} transaction records with indexed B-Tree lookups.")

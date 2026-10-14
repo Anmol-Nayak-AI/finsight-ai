@@ -38,6 +38,18 @@ NARRATIONS = [
 TOTAL_TARGET = 1_000_000
 BATCH_SIZE = 50_000
 
+def customer_profile(customer_id: str):
+    """Return one stable identity/profile for every ledger customer ID."""
+    profile_rng = random.Random(f"finsight-customer:{customer_id}")
+    is_corp = profile_rng.random() < 0.25
+    if is_corp:
+        name = f"{profile_rng.choice(CORP_PREFIX)} {profile_rng.choice(CORP_SUFFIX)}"
+        baseline = round(profile_rng.uniform(150000, 1500000), 2)
+    else:
+        name = f"{profile_rng.choice(FIRST_NAMES)} {profile_rng.choice(LAST_NAMES)}"
+        baseline = round(profile_rng.uniform(15000, 85000), 2)
+    return name, baseline
+
 print(f"===========================================================")
 print(f"FINSIGHT SCALE BENCHMARK: Ingesting {TOTAL_TARGET:,} Rows into Partitioned Ledger")
 print(f"===========================================================")
@@ -61,10 +73,7 @@ with conn.cursor() as cur:
             txn_seq = inserted_so_far + i
             txn_id = f"TXN-{1000000 + txn_seq}"
             cust_id = f"CUST-{random.randint(10000, 99999)}"
-            
-            is_corp = random.random() < 0.25
-            cust_name = f"{random.choice(CORP_PREFIX)} {random.choice(CORP_SUFFIX)}" if is_corp else f"{random.choice(FIRST_NAMES)} {random.choice(LAST_NAMES)}"
-            baseline = round(random.uniform(150000, 1500000), 2) if is_corp else round(random.uniform(15000, 85000), 2)
+            cust_name, baseline = customer_profile(cust_id)
             
             roll = random.random()
             if roll < 0.05:  # 5% AML High-Risk Anomaly
@@ -97,6 +106,29 @@ with conn.cursor() as cur:
             
         inserted_so_far += batch_limit
         print(f"Progress: {inserted_so_far:,} / {TOTAL_TARGET:,} rows streamed...")
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS account_holders (
+            customer_id VARCHAR(64) PRIMARY KEY,
+            customer_name VARCHAR(255) NOT NULL,
+            historical_avg NUMERIC(15, 2) NOT NULL CHECK (historical_avg > 0),
+            latest_transaction_at TIMESTAMP WITH TIME ZONE NOT NULL,
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO account_holders (
+            customer_id, customer_name, historical_avg, latest_transaction_at
+        )
+        SELECT DISTINCT ON (customer_id)
+            customer_id, customer_name, historical_avg, created_at
+        FROM transactions
+        ORDER BY customer_id, created_at DESC
+        ON CONFLICT (customer_id) DO UPDATE SET
+            customer_name = EXCLUDED.customer_name,
+            historical_avg = EXCLUDED.historical_avg,
+            latest_transaction_at = EXCLUDED.latest_transaction_at,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE EXCLUDED.latest_transaction_at >= account_holders.latest_transaction_at;
+    """)
 
 total_duration = (datetime.datetime.now() - start_time).total_seconds()
 print(f"SUCCESS: 1,000,000 Records Ingested in {total_duration:.2f}s ({TOTAL_TARGET/total_duration:,.0f} rows/sec).")
