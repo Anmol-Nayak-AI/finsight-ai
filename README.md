@@ -143,4 +143,8 @@ curl -s http://localhost:8000/health
 ---
 
 ## 📄 License
-Proprietary institutional banking license. All rights reserved.
+
+Copyright © 2026 FinSight AI. All rights reserved. This repository is publicly
+viewable for evaluation and interview review, but reuse, modification,
+redistribution, commercial use, hosting, and deployment are prohibited without
+prior written permission. See the [LICENSE](LICENSE) file for the complete terms.
