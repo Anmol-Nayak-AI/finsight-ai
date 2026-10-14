@@ -77,7 +77,7 @@ The frontend serves the optimized Vite bundle through Nginx, proxies `/api` over
 
 ### Render deployment
 
-The checked-in `render.yaml` provisions a no-cost interview-preview topology in Singapore: one combined React/FastAPI web service and PostgreSQL 16/pgvector. This arrangement is necessary because free Render services cannot receive private-network traffic. Free services sleep when idle, and the free database expires after 30 days. The optional `render.paid.yaml` preserves the separated public-frontend/private-API production topology. Follow [docs/DEPLOY_RENDER.md](docs/DEPLOY_RENDER.md) to generate officer credentials, apply the free Blueprint, and verify the complete Maker–Checker–Regulator workflow.
+The checked-in `render.yaml` provisions a no-cost, no-fixed-expiry portfolio preview: one combined React/FastAPI service on Render Free backed by Neon Free PostgreSQL/pgvector. Both providers scale idle compute to zero, so the first request can be slower, but persisted database storage does not have Render's 30-day free-database expiry. The optional `render.paid.yaml` preserves the separated public-frontend/private-API production topology. Follow [docs/DEPLOY_RENDER.md](docs/DEPLOY_RENDER.md) to create Neon, generate fresh officer credentials, apply the Blueprint, and verify the complete Maker–Checker–Regulator workflow.
 
 ---
 
