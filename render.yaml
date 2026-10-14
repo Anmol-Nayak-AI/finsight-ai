@@ -2,36 +2,22 @@
 
 services:
   - type: web
-    name: finsight-ai-compliance-web
+    name: finsight-ai-compliance-demo
     runtime: docker
-    plan: 0.5c-512mb
+    plan: free
     region: singapore
-    dockerfilePath: ./frontend/Dockerfile
-    dockerContext: ./frontend
-    healthCheckPath: /healthz
+    dockerfilePath: ./Dockerfile.render-free
+    dockerContext: .
+    healthCheckPath: /health
     autoDeployTrigger: commit
-    envVars:
-      - key: BACKEND_HOSTPORT
-        fromService:
-          type: pserv
-          name: finsight-ai-compliance-api
-          property: hostport
-
-  - type: pserv
-    name: finsight-ai-compliance-api
-    runtime: docker
-    plan: 0.5c-512mb
-    region: singapore
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
-    autoDeployTrigger: commit
-    initialDeployHook: python seed_large_ledger.py
     envVars:
       - key: APP_ENV
         value: production
       - key: DEMO_MODE
         value: "false"
       - key: COOKIE_SECURE
+        value: "true"
+      - key: SEED_LEDGER_IF_EMPTY
         value: "true"
       - key: JWT_SECRET_KEY
         generateValue: true
@@ -44,7 +30,7 @@ services:
           name: finsight-ai-compliance-db
           property: connectionString
       - key: ALLOWED_ORIGINS
-        value: https://finsight-ai-compliance-web.onrender.com
+        value: https://finsight-ai-compliance-demo.onrender.com
       - key: MLRO_SHARMA_PASSWORD
         sync: false
       - key: MLRO_SHARMA_TOTP_SEED
@@ -64,7 +50,7 @@ services:
 
 databases:
   - name: finsight-ai-compliance-db
-    plan: 0.1c-256mb
+    plan: free
     region: singapore
     postgresMajorVersion: "16"
     databaseName: finsight

@@ -1,15 +1,21 @@
 import os
-from fastapi import FastAPI, HTTPException
+from pathlib import Path
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.api.routes import router
 from app.graph.workflow import app as compiled_graph
 from app.database import engine
+from app.demo_seed import seed_large_ledger_if_empty
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.workflow = compiled_graph
+    if os.getenv("SEED_LEDGER_IF_EMPTY", "false").lower() == "true":
+        seed_large_ledger_if_empty(engine)
     yield
 
 app = FastAPI(
@@ -41,6 +47,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; "
+        "base-uri 'self'; form-action 'self'",
+    )
+    if os.getenv("APP_ENV", "development").lower() == "production":
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    if request.url.path.startswith("/assets/"):
+        response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
+    return response
+
 app.include_router(router)
 
 @app.get("/health", tags=["Telemetry"])
@@ -61,3 +87,34 @@ async def health_check():
         print(f"[Readiness Check] {error}")
         raise HTTPException(status_code=503, detail="Database readiness check failed.")
     return {"status": "HEALTHY", "system": "FinSight AI Enterprise Engine", "database": "READY"}
+
+
+# The free Render topology runs one web service. When STATIC_DIR is supplied by
+# that image, FastAPI serves the compiled React application after all API and
+# telemetry routes have been registered. Local and split-service deployments
+# omit STATIC_DIR and continue to use the Vite/Nginx frontend unchanged.
+STATIC_DIR = os.getenv("STATIC_DIR")
+if STATIC_DIR:
+    static_root = Path(STATIC_DIR).resolve()
+    index_file = static_root / "index.html"
+    assets_directory = static_root / "assets"
+
+    if not index_file.is_file():
+        raise RuntimeError(f"Compiled frontend is missing from {static_root}")
+
+    if assets_directory.is_dir():
+        app.mount("/assets", StaticFiles(directory=assets_directory), name="frontend-assets")
+
+    @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+    async def serve_frontend_index():
+        return FileResponse(index_file)
+
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
+    async def serve_frontend_route(full_path: str):
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="API route not found.")
+
+        requested_file = (static_root / full_path).resolve()
+        if static_root in requested_file.parents and requested_file.is_file():
+            return FileResponse(requested_file)
+        return FileResponse(index_file)

@@ -1,0 +1,73 @@
+# Optional paid production topology. Render discovers render.yaml by default;
+# select this file explicitly only when paid private services are desired.
+
+services:
+  - type: web
+    name: finsight-ai-compliance-web-paid
+    runtime: docker
+    plan: 0.5c-512mb
+    region: singapore
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
+    envVars:
+      - key: BACKEND_HOSTPORT
+        fromService:
+          type: pserv
+          name: finsight-ai-compliance-api-paid
+          property: hostport
+
+  - type: pserv
+    name: finsight-ai-compliance-api-paid
+    runtime: docker
+    plan: 0.5c-512mb
+    region: singapore
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    autoDeployTrigger: commit
+    initialDeployHook: python seed_large_ledger.py
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DEMO_MODE
+        value: "false"
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: finsight-ai-compliance-db-paid
+          property: connectionString
+      - key: DATABASE_CHECKPOINT_URL
+        fromDatabase:
+          name: finsight-ai-compliance-db-paid
+          property: connectionString
+      - key: ALLOWED_ORIGINS
+        value: https://finsight-ai-compliance-web-paid.onrender.com
+      - key: MLRO_SHARMA_PASSWORD
+        sync: false
+      - key: MLRO_SHARMA_TOTP_SEED
+        sync: false
+      - key: MLRO_KAPOOR_PASSWORD
+        sync: false
+      - key: MLRO_KAPOOR_TOTP_SEED
+        sync: false
+      - key: ANALYST_VERMA_PASSWORD
+        sync: false
+      - key: ANALYST_VERMA_TOTP_SEED
+        sync: false
+      - key: REGULATOR_IYER_PASSWORD
+        sync: false
+      - key: REGULATOR_IYER_TOTP_SEED
+        sync: false
+
+databases:
+  - name: finsight-ai-compliance-db-paid
+    plan: 0.1c-256mb
+    region: singapore
+    postgresMajorVersion: "16"
+    databaseName: finsight
+    user: finsight
+    ipAllowList: []

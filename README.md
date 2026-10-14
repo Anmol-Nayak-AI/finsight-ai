@@ -77,7 +77,7 @@ The frontend serves the optimized Vite bundle through Nginx, proxies `/api` over
 
 ### Render deployment
 
-The checked-in `render.yaml` provisions the production topology in Singapore: public Nginx frontend, private FastAPI API, and private PostgreSQL 16/pgvector. Follow [docs/DEPLOY_RENDER.md](docs/DEPLOY_RENDER.md) to generate the required officer credentials, apply the Blueprint, and verify the complete Maker–Checker–Regulator workflow.
+The checked-in `render.yaml` provisions a no-cost interview-preview topology in Singapore: one combined React/FastAPI web service and PostgreSQL 16/pgvector. This arrangement is necessary because free Render services cannot receive private-network traffic. Free services sleep when idle, and the free database expires after 30 days. The optional `render.paid.yaml` preserves the separated public-frontend/private-API production topology. Follow [docs/DEPLOY_RENDER.md](docs/DEPLOY_RENDER.md) to generate officer credentials, apply the free Blueprint, and verify the complete Maker–Checker–Regulator workflow.
 
 ---
 
