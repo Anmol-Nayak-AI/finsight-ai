@@ -7,6 +7,7 @@ This directory contains the end-to-end technical and operational documentation f
 | Document | Purpose |
 |---|---|
 | [Project documentation](PROJECT_DOCUMENTATION.md) | Product scope, architecture, workflows, AI/RAG design, data model, API, security, testing, operations, and limitations |
+| [Project documentation PDF](../output/pdf/FinSight_AI_Project_Documentation.pdf) | Interview-ready, printable edition of the complete project documentation |
 | [Free Render deployment](DEPLOY_RENDER.md) | Step-by-step Neon and Render deployment guide |
 | [Architecture source](../architecture.mmd) | Mermaid source for the system architecture diagram |
 | [Repository README](../README.md) | Project overview and quick start |
@@ -27,4 +28,3 @@ This directory contains the end-to-end technical and operational documentation f
 - `Regulator` means an FIU-IND officer who can close an externally escalated case.
 - Statements marked **Current implementation** describe behavior present in the repository.
 - Statements marked **Production evolution** describe recommended future work and are not claims about the deployed portfolio environment.
-

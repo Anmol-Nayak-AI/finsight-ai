@@ -8,6 +8,7 @@ FinSight AI is a production-minded portfolio implementation of an Anti-Money Lau
 
 - [Documentation hub](docs/README.md)
 - [Complete end-to-end project documentation](docs/PROJECT_DOCUMENTATION.md)
+- [Complete project documentation PDF](output/pdf/FinSight_AI_Project_Documentation.pdf)
 - [Free Render + Neon deployment guide](docs/DEPLOY_RENDER.md)
 - [Mermaid architecture source](architecture.mmd)
 
