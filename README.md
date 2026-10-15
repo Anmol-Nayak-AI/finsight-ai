@@ -2,7 +2,14 @@
 
 ![FinSight Architecture](architecture_diagram.png)
 
-FinSight AI is an institutional-grade Anti-Money Laundering (AML) regulatory intelligence and transaction monitoring engine designed for Tier-1 financial institutions. It enforces the statutory **Four-Eyes Principle (Dual-Control)**, RFC 6238 TOTP two-factor authentication, multi-agent cyclical reasoning via LangGraph, and hybrid Reciprocal Rank Fusion (RRF) search over regulatory circulars.
+FinSight AI is a production-minded portfolio implementation of an Anti-Money Laundering (AML) regulatory intelligence and transaction monitoring engine. It demonstrates the statutory **Four-Eyes Principle (Dual-Control)**, RFC 6238 TOTP two-factor authentication, stateful multi-agent orchestration via LangGraph, and hybrid Reciprocal Rank Fusion (RRF) search over regulatory circulars.
+
+## Documentation
+
+- [Documentation hub](docs/README.md)
+- [Complete end-to-end project documentation](docs/PROJECT_DOCUMENTATION.md)
+- [Free Render + Neon deployment guide](docs/DEPLOY_RENDER.md)
+- [Mermaid architecture source](architecture.mmd)
 
 ---
 
@@ -18,7 +25,7 @@ FinSight AI is an institutional-grade Anti-Money Laundering (AML) regulatory int
 - **MLRO Executive Desk (Checker)**:
   - Holds exclusive legal authority to issue binding statutory rulings (`ACCOUNT_FREEZE`, `ESCALATE`, `APPROVE`) and file Suspicious Activity Reports (SARs) with regulatory bodies (e.g., FIU-IND).
   - Test sliders and manual creation controls are strictly prohibited and hidden on this desk.
-  - Features real-time Stream Anomaly Ingestion from the 1,000,000-row core banking transaction ledger.
+  - Features stream anomaly ingestion from an indexed synthetic core-banking ledger. The hosted preview seeds 10,000 rows; an optional local generator supports a 1,000,000-row benchmark dataset.
 - **FIU External Disposition Desk (Regulator)**:
   - Receives only MLRO-escalated cases and cannot access the internal Maker or Checker actions.
   - Records a unique FIU acknowledgement/order reference, rationale, and one terminal outcome: no further action, continued monitoring, or enforcement referral.

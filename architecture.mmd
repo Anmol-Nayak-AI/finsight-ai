@@ -11,7 +11,8 @@ flowchart TD
 
     Client["React 18 Dashboard<br/>(Vite Console)"]:::client
     API["FastAPI Ingestion Gateway<br/>/api/v1/investigations"]:::gateway
-    Checkpointer[("PostgreSQL 16<br/>AsyncPostgresSaver & Checkpoints")]:::checkpointer
+    CaseStore[("PostgreSQL 16<br/>Ledger, Cases & Audit State")]:::checkpointer
+    Checkpointer[("LangGraph MemorySaver<br/>Process-local Checkpoints")]:::checkpointer
 
     subgraph Governance ["Three-Party Decision Governance"]
         Maker["AML Analyst<br/>Maker Recommendation"]:::hitl
@@ -20,7 +21,7 @@ flowchart TD
         RegulatoryTerminal["Immutable Regulator Outcome<br/>Cleared / Monitoring / Enforcement"]:::term
     end
 
-    subgraph LangGraph_Machine ["LangGraph Stateful Cyclic Engine"]
+    subgraph LangGraph_Machine ["LangGraph Stateful Orchestration"]
         InvNode["Node 1: Transaction Investigator"]:::agent
         AnalystNode["Node 2: Customer Risk Analyst"]:::agent
         RAGNode["Node 3: Regulatory Researcher"]:::agent
@@ -30,15 +31,16 @@ flowchart TD
     end
 
     subgraph Data_Layer ["Data & Tool Subsystems"]
-        LedgerTool["PostgreSQL Core Ledger<br/>B-Tree Index Scan (<2ms)"]:::tool
+        LedgerTool["PostgreSQL Core Ledger<br/>Indexed Transaction Lookup"]:::tool
         AccountDirectory["Canonical Account-Holder Directory<br/>Search / Pagination / Sampling"]:::tool
         ProfilerTool["Turnover Velocity Profiler<br/>& Sanctions Watchlist"]:::tool
         RAGRetriever["Hybrid BM25 + pgvector HNSW<br/>Reciprocal Rank Fusion (k=60)"]:::tool
     end
 
     Client -->|"1. POST /simulate or /run"| API
-    API -->|"2. Initialize thread_id"| Checkpointer
-    Checkpointer -->|"3. Invoke StateGraph"| InvNode
+    API <-->|"2. Durable business state"| CaseStore
+    API -->|"3. Initialize thread_id"| Checkpointer
+    Checkpointer -->|"4. Invoke StateGraph"| InvNode
 
     InvNode <-->|"Ledger Query"| LedgerTool
     LedgerTool -->|"Latest identity projection"| AccountDirectory
@@ -55,12 +57,15 @@ flowchart TD
     EvalNode -->|"Risk >= 0.70 Threshold"| HITLNode
     EvalNode -->|"Risk < 0.70 Safe"| TermNode
 
-    HITLNode -->|"4. Persist State to Disk"| Checkpointer
-    Client <-->|"5. Submit evidence"| Maker
+    HITLNode -->|"5. Pause graph execution"| Checkpointer
+    Client <-->|"6. Submit evidence"| Maker
     Maker -->|"Atomic PENDING_MAKER → PENDING_CHECKER"| Checker
     Checker -->|"Approve / Reject"| TermNode
     Checker -->|"Escalate + unique FIU docket"| FIU
     FIU -->|"Atomic one-time disposition"| RegulatoryTerminal
+    Maker -->|"Persist recommendation"| CaseStore
+    Checker -->|"Persist binding decision"| CaseStore
+    FIU -->|"Persist external outcome"| CaseStore
     Maker -. "Cannot self-adjudicate" .-> Checker
     Checker -. "Cannot self-resolve escalation" .-> FIU
     HITLNode --> Maker
