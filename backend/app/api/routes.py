@@ -907,7 +907,7 @@ async def checker_execute(case_id: str, payload: CheckerExecutionPayload, reques
             detail="Another officer has already completed this case. Refresh the queue to view the sealed ruling."
         )
 
-    # Resume the in-memory reasoning trace only after the durable transition.
+    # Resume the durable reasoning trace only after the authoritative transition.
     # A checkpoint issue must never roll back or duplicate the statutory ruling.
     try:
         if hasattr(request.app.state, "workflow") and request.app.state.workflow is not None:

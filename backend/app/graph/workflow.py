@@ -61,7 +61,6 @@ def create_compliance_graph():
     
     return builder
 
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 def create_checkpoint_serializer():
@@ -74,7 +73,6 @@ def create_checkpoint_serializer():
         # LangGraph < 1.0 did not expose an explicit MessagePack allowlist.
         return JsonPlusSerializer()
 
-# Default compiled workflow application with an explicitly constrained serializer.
-app = create_compliance_graph().compile(
-    checkpointer=MemorySaver(serde=create_checkpoint_serializer())
-)
+def compile_compliance_graph(checkpointer):
+    """Compile the graph against the checkpointer owned by the app lifespan."""
+    return create_compliance_graph().compile(checkpointer=checkpointer)

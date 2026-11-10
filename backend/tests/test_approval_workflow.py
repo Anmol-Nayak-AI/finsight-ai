@@ -300,6 +300,14 @@ def test_concurrent_approval_transitions_are_atomic():
             assert created.status_code == 200
             case_id = created.json()["case_id"]
             assert created.json()["status"] == "PENDING_MAKER"
+            assert any(
+                "ComplianceEvaluator: Synthesized score" in event
+                for event in created.json()["execution_trace"]
+            ), "The investigation must execute the graph rather than silently fall back"
+            assert any(
+                item.get("sparse_rank", 999) < 999
+                for item in created.json()["retrieved_policies"]
+            )
 
             maker_payload = {
                 "recommendation": "RECOMMEND_ESCALATE",

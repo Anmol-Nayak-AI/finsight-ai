@@ -12,7 +12,7 @@ flowchart TD
     Client["React 18 Dashboard<br/>(Vite Console)"]:::client
     API["FastAPI Ingestion Gateway<br/>/api/v1/investigations"]:::gateway
     CaseStore[("PostgreSQL 16<br/>Ledger, Cases & Audit State")]:::checkpointer
-    Checkpointer[("LangGraph MemorySaver<br/>Process-local Checkpoints")]:::checkpointer
+    Checkpointer[("LangGraph PostgreSQL<br/>Durable Checkpoints")]:::checkpointer
 
     subgraph Governance ["Three-Party Decision Governance"]
         Maker["AML Analyst<br/>Maker Recommendation"]:::hitl

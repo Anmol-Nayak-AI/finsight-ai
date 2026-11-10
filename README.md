@@ -4,6 +4,15 @@
 
 FinSight AI is a production-minded portfolio implementation of an Anti-Money Laundering (AML) regulatory intelligence and transaction monitoring engine. It demonstrates the statutory **Four-Eyes Principle (Dual-Control)**, RFC 6238 TOTP two-factor authentication, stateful multi-agent orchestration via LangGraph, and hybrid Reciprocal Rank Fusion (RRF) search over regulatory circulars.
 
+## For recruiters and reviewers
+
+- [Hosted application](https://finsight-ai-compliance-demo.onrender.com) — the free service can take about a minute to wake. Hosted officer access is provided by the owner; the credentials below are for local demonstrations.
+- [Project walkthrough](docs/PROJECT_DOCUMENTATION.md) and [downloadable PDF](output/pdf/FinSight_AI_Project_Documentation.pdf).
+- Start with [API and approval transitions](backend/app/api/routes.py), [investigation graph](backend/app/graph/workflow.py), [durable checkpoints](backend/app/graph/checkpointing.py), and [workflow regression tests](backend/tests/test_approval_workflow.py).
+- The portfolio uses synthetic transaction data. Research runs with BM25 and deterministic reasoning without an OpenAI key; configured embeddings enable dense retrieval and RRF fusion.
+
+This repository is available for source review. Public visibility does not grant write access to this repository. GitHub permits public repositories to be viewed and forked; the [proprietary license](LICENSE) reserves reuse and modification rights. Contributions are managed by the repository owner.
+
 ## Documentation
 
 - [Documentation hub](docs/README.md)
@@ -92,7 +101,7 @@ The checked-in `render.yaml` provisions a no-cost, no-fixed-expiry portfolio pre
 ## 🚀 Quick Start Guide
 
 ### Prerequisites
-- Python 3.9+
+- Python 3.11+
 - Node.js 18+ & npm
 - Docker & Docker Compose
 
@@ -141,6 +150,10 @@ Run the complete workflow and hybrid RAG test suites:
 ```bash
 docker compose -f docker-compose.dev.yml exec -T backend pytest -q
 ```
+
+CI runs the backend suite against an isolated PostgreSQL/pgvector database,
+including checkpoint recovery after a connection-pool restart, and builds the
+frontend. Dense retrieval tests use a fixed local vector and require no paid API.
 
 Check API Telemetry:
 ```bash

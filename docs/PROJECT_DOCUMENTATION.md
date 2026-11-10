@@ -66,9 +66,11 @@ flowchart LR
     UI --> API[FastAPI API]
     API --> Auth[JWT + TOTP + RBAC]
     API --> Graph[LangGraph workflow]
+    Graph --> Checkpoints[Durable LangGraph checkpoints]
     Graph --> Agents[Specialized analysis agents]
     Agents --> RAG[BM25 + optional pgvector retrieval]
     API --> DB[(PostgreSQL / Neon)]
+    Checkpoints --> DB
     RAG --> DB
     API --> Audit[Security and decision audit events]
     Audit --> DB
@@ -81,7 +83,7 @@ flowchart LR
 | React frontend | Role-specific workspaces, case entry, evidence review, adjudication, and audit-log presentation |
 | FastAPI backend | Validation, authentication, authorization, workflow APIs, health checks, and response shaping |
 | LangGraph | State-oriented orchestration of specialized analysis nodes and HITL routing |
-| PostgreSQL | Transactions, account identities, case state, regulatory chunks, user records, replay protection, and audit history |
+| PostgreSQL | Transactions, account identities, case state, LangGraph checkpoints, regulatory chunks, user records, replay protection, and audit history |
 | pgvector | Optional dense vector retrieval with cosine similarity and HNSW indexing |
 | BM25 | In-memory sparse retrieval over the approved regulatory corpus |
 | OpenAI integration | Optional embeddings and two-sentence regulatory rationale synthesis |
@@ -229,9 +231,9 @@ Every successful human transition increments `decision_version` and appends an a
 
 ### 8.3 Current checkpoint behavior
 
-The current graph compiles with LangGraph `MemorySaver`. Graph checkpoints therefore exist only for the life of the backend process. Durable compliance case state and binding outcomes are stored separately in PostgreSQL and remain authoritative across restarts.
+The graph uses LangGraph `AsyncPostgresSaver` with a bounded psycopg connection pool. Startup applies the LangGraph checkpoint migrations, compiles the workflow against that durable store, and closes the pool during graceful shutdown. Each case ID remains the LangGraph `thread_id`, so an investigation paused at `interrupt()` can resume after a backend restart.
 
-**Production evolution:** Replace `MemorySaver` with a PostgreSQL checkpointer, configure replay-safe node behavior, and persist model/prompt versions with each checkpoint. `DATABASE_CHECKPOINT_URL` is currently reserved for that evolution and for data-generation scripts; it is not the active graph checkpoint store.
+PostgreSQL compliance case rows remain authoritative for binding maker/checker/regulator outcomes. The checkpoint store preserves orchestration state; it does not replace the transactional case-state guards.
 
 ## 9. Hybrid regulatory retrieval
 
@@ -508,9 +510,16 @@ REGULATOR_IYER_TOTP_SEED
 | `VITE_DEMO_MODE` | Controls local demo persona conveniences at build time |
 | `VITE_BACKEND_URL` | Development proxy target used by the Vite configuration |
 
-### 16.4 Reserved variable
+### 16.4 Checkpoint variables
 
-`DATABASE_CHECKPOINT_URL` is present for checkpoint/data-script compatibility. The currently compiled graph uses `MemorySaver`; do not describe this variable as an active durable LangGraph checkpoint configuration.
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_CHECKPOINT_URL` | No | Active LangGraph PostgreSQL checkpoint connection URL. Falls back to `DATABASE_URL`. |
+| `CHECKPOINT_POOL_MIN_SIZE` | No | Minimum checkpoint connections; defaults to `1`. |
+| `CHECKPOINT_POOL_MAX_SIZE` | No | Maximum checkpoint connections; defaults to `10`. |
+| `CHECKPOINT_POOL_STARTUP_TIMEOUT` | No | Seconds to wait for the checkpoint pool at startup; defaults to `30`. |
+
+The checkpoint user needs permission to create and migrate LangGraph's checkpoint tables during application startup.
 
 Use [.env.example](../.env.example) as the canonical key template. Never commit a populated `.env` file.
 
@@ -750,7 +759,7 @@ This is expected when an account already has a case in `PENDING_MAKER`, `PENDING
 
 ### Reliability
 
-- PostgreSQL-backed LangGraph checkpointing
+- Checkpoint retention/pruning and disaster-recovery policies
 - Background job queue with retries and dead-letter handling
 - Versioned migrations and zero-downtime rollout strategy
 - Multi-instance deployment, autoscaling, and graceful shutdown
@@ -791,7 +800,7 @@ This is expected when an account already has a case in `PENDING_MAKER`, `PENDING
 - The regulatory corpus is small and illustrative.
 - Dense retrieval requires an API key and precomputed embeddings.
 - The hosted free deployment intentionally omits paid availability guarantees.
-- LangGraph checkpointing is in memory in the current implementation.
+- LangGraph checkpoint availability depends on the configured PostgreSQL service; startup fails if the checkpoint store cannot be initialized.
 - Schema initialization occurs at application import/startup instead of a migration framework.
 - Audit records are database rows, not a cryptographically chained or WORM ledger.
 - The project has workflow regression tests but not a complete production AI evaluation program.
@@ -818,4 +827,3 @@ Before presenting:
 The repository is publicly viewable for evaluation but remains proprietary and all rights are reserved. See [LICENSE](../LICENSE).
 
 All bundled and generated transaction records are synthetic. Do not place real bank credentials, customer records, TOTP seeds, passwords, database URLs, or API keys in the repository, screenshots, demonstrations, or support conversations.
-

@@ -1,4 +1,6 @@
 import pytest
+from sqlalchemy import text
+from unittest.mock import AsyncMock
 from app.database import async_session_factory
 from app.rag.hybrid_retriever import HybridRAGRetriever
 
@@ -17,11 +19,22 @@ async def test_sparse_bm25_retrieval():
 async def test_dense_vector_retrieval():
     async with async_session_factory() as session:
         retriever = HybridRAGRetriever(session=session)
-        
-        # Test dense semantic search
+        # Exercise real pgvector ranking without a paid embedding API. The
+        # temporary row is rolled back when the session closes.
+        vector = [1.0] + [0.0] * 1535
+        retriever.embeddings = AsyncMock()
+        retriever.embeddings.aembed_query.return_value = vector
+        await session.execute(text("""
+            INSERT INTO regulatory_chunks
+                (document_title, regulator, circular_ref, section, content, embedding)
+            VALUES ('Dense retrieval test', 'TEST', 'TEST-DENSE', 'TEST',
+                    'High value unusual wire transfers', CAST(:vector AS vector))
+        """), {"vector": str(vector)})
+
         dense_hits = await retriever._retrieve_dense("high value unusual wire transfers", top_n=3)
         assert len(dense_hits) > 0
-        assert dense_hits[0]["score"] > 0.0
+        assert dense_hits[0]["circular_ref"] == "TEST-DENSE"
+        assert dense_hits[0]["score"] == pytest.approx(1.0)
 
 @pytest.mark.asyncio
 async def test_hybrid_rrf_retrieval():

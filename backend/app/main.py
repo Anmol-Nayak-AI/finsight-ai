@@ -7,16 +7,20 @@ from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.api.routes import router
-from app.graph.workflow import app as compiled_graph
+from app.graph.checkpointing import postgres_checkpoint_workflow
 from app.database import engine
 from app.demo_seed import seed_large_ledger_if_empty
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.workflow = compiled_graph
-    if os.getenv("SEED_LEDGER_IF_EMPTY", "false").lower() == "true":
-        seed_large_ledger_if_empty(engine)
-    yield
+    async with postgres_checkpoint_workflow() as compiled_graph:
+        app.state.workflow = compiled_graph
+        if os.getenv("SEED_LEDGER_IF_EMPTY", "false").lower() == "true":
+            seed_large_ledger_if_empty(engine)
+        try:
+            yield
+        finally:
+            app.state.workflow = None
 
 app = FastAPI(
     title="FinSight AI Compliance API",
